@@ -120,10 +120,13 @@ all: build
 
 build: european
 
+european_cpu.o: european_cpu.cpp
+	$(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
+
 european.o: european.cu
 	$(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
 
-european: european.o
+european: european.o european_cpu.o
 	$(NVCC) $(ALL_LDFLAGS) -G -g -o $@ $+ $(LIBRARIES)
 	mkdir -p ../../bin/$(OS_ARCH)/$(OSLOWER)/$(TARGET)$(if $(abi),/$(abi))
 	cp $@ ../../bin/$(OS_ARCH)/$(OSLOWER)/$(TARGET)$(if $(abi),/$(abi))
@@ -132,7 +135,7 @@ run: build
 	./european
 
 clean:
-	rm -f european european.o 
+	rm -f european european.o european_cpu.o 
 	rm -rf ../../bin/$(OS_ARCH)/$(OSLOWER)/$(TARGET)$(if $(abi),/$(abi))/a
 
 clobber: clean

@@ -6,79 +6,114 @@
 #include <cuda_runtime.h>
 
 #include <curand.h>
-#include "realtype.h"
-#include "curand_kernel.h"
+#include "MonteCarlo_common.h"
 
+
+
+//Preprocessed input option data
 typedef struct
 {
-    float S;
-    float X;
-    float T;
-    float R;
-    float V;
-} TOptionData;
+    real S;
+    real X;
+    real MuByT;
+    real VBySqrtT;
+} __TOptionData;
+static __device__ __constant__ __TOptionData d_OptionData[MAX_OPTIONS];
 
-typedef struct
+static __device__ __TOptionValue d_CallValue[MAX_OPTIONS];
+
+
+__device__ inline float endCallValue(float S, float X, float r, float MuByT, float VBySqrtT)
 {
-    float Expected;
-    float Confidence;
-} TOptionValue;
+    float callValue = S * __expf(MuByT + VBySqrtT * r) - X;
+    return (callValue > 0) ? callValue : 0;
+}
 
-//GPU outputs before CPU postprocessing
-typedef struct
+
+
+////////////////////////////////////////////////////////////////////////////////
+// This kernel computes the integral over all paths using a single thread block
+// per option. It is fastest when the number of thread blocks times the work per
+// block is high enough to keep the GPU busy.
+////////////////////////////////////////////////////////////////////////////////
+static __global__ void MonteCarloOneBlockPerOption(
+    curandState *rngStates,
+    int pathN)
 {
-    real Expected;
-    real Confidence;
-} __TOptionValue;
+    const int SUM_N = THREAD_N;
+    __shared__ real s_SumCall[SUM_N];
+    __shared__ real s_Sum2Call[SUM_N];
 
-typedef struct
-{
-    //Device ID for multi-GPU version
-    int device;
-    //Option count for this plan
-    int optionCount;
+    const int optionIndex = blockIdx.x;
+    const real        S = d_OptionData[optionIndex].S;
+    const real        X = d_OptionData[optionIndex].X;
+    const real    MuByT = d_OptionData[optionIndex].MuByT;
+    const real VBySqrtT = d_OptionData[optionIndex].VBySqrtT;
 
-    //Host-side data source and result destination
-    TOptionData  *optionData;
-    TOptionValue *callValue;
+    // determine global thread id
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
 
-    //Temporary Host-side pinned memory for async + faster data transfers
-    __TOptionValue *h_CallValue;
+    // Copy random number state to local memory for efficiency
+    curandState localState = rngStates[tid];
+
+    //Cycle through the entire samples array:
+    //derive end stock price for each path
+    //accumulate partial integrals into intermediate shared memory buffer
+    for (int iSum = threadIdx.x; iSum < SUM_N; iSum += blockDim.x)
+    {
+        __TOptionValue sumCall = {0, 0};
+
+        for (int i = iSum; i < pathN; i += SUM_N)
+        {
+            real              r = curand_normal(&localState);
+            real      callValue = endCallValue(S, X, r, MuByT, VBySqrtT);
+            sumCall.Expected   += callValue;
+            sumCall.Confidence += callValue * callValue;
+        }
+
+        s_SumCall[iSum]  = sumCall.Expected;
+        s_Sum2Call[iSum] = sumCall.Confidence;
+    }
+
+    // store random number state back to global memory
+    rngStates[tid] = localState;
+
+    //Reduce shared memory accumulators
+    //and write final result to global memory
+    sumReduce<real, SUM_N, THREAD_N>(s_SumCall, s_Sum2Call);
+
+    if (threadIdx.x == 0)
+    {
+        __TOptionValue t = {s_SumCall[0], s_Sum2Call[0]};
+        d_CallValue[optionIndex] = t;
+    }
+}
 
 
-    //Intermediate device-side buffers
-    void *d_Buffer;
 
-    //random number generator states
-    curandState *rngStates;
 
-    //Pseudorandom samples count
-    int pathN;
 
-    //Time stamp
-    float time;
 
-    //random number generator seed.
-    unsigned long long seed;
-} TOptionPlan;
 
 float randFloat(float low, float high)
 {
     float t = (float)rand() / (float)RAND_MAX;
     return (1.0f - t) * low + t * high;
 }
-static double endCallValue(double S, double X, double r, double MuByT, double VBySqrtT)
-{
-    double callValue = S * exp(MuByT + VBySqrtT * r) - X;
-    return (callValue > 0) ? callValue : 0;
-}
-void MonteCarloCPU(
-        TOptionValue    &callValue,
-        TOptionData optionData,
-        float *h_Samples,
-        int pathN
-        );
 
+
+
+void MonteCarloGPU(TOptionPlan *plan, cudaStream_t stream);
+
+///////////////////////////////////////////////////////////////////////////////
+// CPU reference functions
+///////////////////////////////////////////////////////////////////////////////
+extern "C" void MonteCarloCPU(
+    TOptionValue   &callValue,
+    TOptionData optionData,
+    float *h_Random,
+    int pathN
+);
 
 int main(void) {
 
@@ -94,9 +129,6 @@ int main(void) {
     callValueGPU.Expected   = -1.0f;
     callValueGPU.Confidence = -1.0f;
 
-
-
-
     MonteCarloCPU(
             callValueCPU,
             optionData,
@@ -111,59 +143,52 @@ int main(void) {
     return 0;
 }
 
-void MonteCarloCPU(
-        TOptionValue    &callValue,
-        TOptionData optionData,
-        float *h_Samples,
-        int pathN
-        )
+
+//Main computations
+void MonteCarloGPU(TOptionPlan *plan, cudaStream_t stream)
 {
-    const double        S = optionData.S;
-    const double        X = optionData.X;
-    const double        T = optionData.T;
-    const double        R = optionData.R;
-    const double        V = optionData.V;
-    const double    MuByT = (R - 0.5 * V * V) * T;
-    const double VBySqrtT = V * sqrt(T);
+    __TOptionData h_OptionData[MAX_OPTIONS];
+    __TOptionValue *h_CallValue = plan->h_CallValue;
 
-    float *samples;
-    curandGenerator_t gen;
-
-    curandCreateGeneratorHost(&gen, CURAND_RNG_PSEUDO_DEFAULT);
-    unsigned long long seed = 1234ULL;
-    curandSetPseudoRandomGeneratorSeed(gen,  seed);
-
-    if (h_Samples != NULL)
+    if (plan->optionCount <= 0 || plan->optionCount > MAX_OPTIONS)
     {
-        samples = h_Samples;
-    }
-    else
-    {
-        samples = (float *) malloc(pathN * sizeof(float));
-        curandGenerateNormal(gen, samples, pathN, 0.0, 1.0);
+        printf("MonteCarloGPU(): bad option count.\n");
+        return;
     }
 
-    // for(int i=0; i<10; i++) printf("CPU sample = %f\n", samples[i]);
-
-    double sum = 0, sum2 = 0;
-
-    for (int pos = 0; pos < pathN; pos++)
+    for (int i = 0; i < plan->optionCount; i++)
     {
-
-        double    sample = samples[pos];
-        double callValue = endCallValue(S, X, sample, MuByT, VBySqrtT);
-        sum  += callValue;
-        sum2 += callValue * callValue;
+        const double           T = plan->optionData[i].T;
+        const double           R = plan->optionData[i].R;
+        const double           V = plan->optionData[i].V;
+        const double       MuByT = (R - 0.5 * V * V) * T;
+        const double    VBySqrtT = V * sqrt(T);
+        h_OptionData[i].S        = (real)plan->optionData[i].S;
+        h_OptionData[i].X        = (real)plan->optionData[i].X;
+        h_OptionData[i].MuByT    = (real)MuByT;
+        h_OptionData[i].VBySqrtT = (real)VBySqrtT;
     }
 
-    if (h_Samples == NULL) free(samples);
+    checkCudaErrors(cudaMemcpyToSymbolAsync(
+                        d_OptionData,
+                        h_OptionData,
+                        plan->optionCount * sizeof(__TOptionData),
+                        0, cudaMemcpyHostToDevice, stream
+                    ));
 
-    curandDestroyGenerator(gen);
+    MonteCarloOneBlockPerOption<<<plan->optionCount, THREAD_N, 0, stream>>>(
+        plan->rngStates,
+        plan->pathN
+    );
+    getLastCudaError("MonteCarloOneBlockPerOption() execution failed\n");
 
-    //Derive average from the total sum and discount by riskfree rate
-    callValue.Expected = (float)(exp(-R * T) * sum / (double)pathN);
-    //Standart deviation
-    double stdDev = sqrt(((double)pathN * sum2 - sum * sum)/ ((double)pathN * (double)(pathN - 1)));
-    //Confidence width; in 95% of all cases theoretical value lies within these borders
-    callValue.Confidence = (float)(exp(-R * T) * 1.96 * stdDev / sqrt((double)pathN));
+
+    checkCudaErrors(cudaMemcpyFromSymbolAsync(
+                        h_CallValue,
+                        d_CallValue,
+                        plan->optionCount * sizeof(__TOptionValue), (size_t)0, cudaMemcpyDeviceToHost, stream
+                    ));
+
+    //cudaDeviceSynchronize();
+
 }
