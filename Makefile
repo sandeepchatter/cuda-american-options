@@ -118,24 +118,27 @@ GENCODE_FLAGS   := $(GENCODE_SM10) $(GENCODE_SM20) $(GENCODE_SM30)
 # Target rules
 all: build
 
-build: european
+build: european_main
+
+european_gpu.o: european_gpu.cu
+	$(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
 
 european_cpu.o: european_cpu.cpp
 	$(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
 
-european.o: european.cu
+european_main.o: european_main.cpp
 	$(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
 
-european: european.o european_cpu.o
+european_main: european_main.o european_cpu.o european_gpu.o
 	$(NVCC) $(ALL_LDFLAGS) -G -g -o $@ $+ $(LIBRARIES)
 	mkdir -p ../../bin/$(OS_ARCH)/$(OSLOWER)/$(TARGET)$(if $(abi),/$(abi))
 	cp $@ ../../bin/$(OS_ARCH)/$(OSLOWER)/$(TARGET)$(if $(abi),/$(abi))
 
 run: build
-	./european
+	./european_main
 
 clean:
-	rm -f european european.o european_cpu.o 
+	rm -f european_main european_main.o european_cpu.o european_gpu.o 
 	rm -rf ../../bin/$(OS_ARCH)/$(OSLOWER)/$(TARGET)$(if $(abi),/$(abi))/a
 
 clobber: clean
