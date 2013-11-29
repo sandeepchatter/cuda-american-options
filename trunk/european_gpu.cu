@@ -3,11 +3,12 @@
 #include <stdlib.h>
 #include <math.h>
 
-#include <cuda_runtime.h>
 
-#include <curand.h>
+#include <curand_kernel.h>
 #include "MonteCarlo_common.h"
+#include "MonteCarlo_reduction.cuh"
 
+#define THREAD_N 256
 
 
 //Preprocessed input option data
@@ -18,9 +19,9 @@ typedef struct
     real MuByT;
     real VBySqrtT;
 } __TOptionData;
-static __device__ __constant__ __TOptionData d_OptionData[MAX_OPTIONS];
+static __device__ __constant__ __TOptionData *d_OptionData;
 
-static __device__ __TOptionValue d_CallValue[MAX_OPTIONS];
+static __device__ __TOptionValue *d_CallValue;
 
 
 __device__ inline float endCallValue(float S, float X, float r, float MuByT, float VBySqrtT)
@@ -44,11 +45,11 @@ static __global__ void MonteCarloOneBlockPerOption(
     __shared__ real s_SumCall[SUM_N];
     __shared__ real s_Sum2Call[SUM_N];
 
-    const int optionIndex = blockIdx.x;
-    const real        S = d_OptionData[optionIndex].S;
-    const real        X = d_OptionData[optionIndex].X;
-    const real    MuByT = d_OptionData[optionIndex].MuByT;
-    const real VBySqrtT = d_OptionData[optionIndex].VBySqrtT;
+    //const int optionIndex = blockIdx.x;
+    const real        S = d_OptionData->S;
+    const real        X = d_OptionData->X;
+    const real    MuByT = d_OptionData->MuByT;
+    const real VBySqrtT = d_OptionData->VBySqrtT;
 
     // determine global thread id
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
@@ -85,56 +86,46 @@ static __global__ void MonteCarloOneBlockPerOption(
     if (threadIdx.x == 0)
     {
         __TOptionValue t = {s_SumCall[0], s_Sum2Call[0]};
-        d_CallValue[optionIndex] = t;
+        *d_CallValue = t;
     }
 }
 
 //Main computations
-extern "C" void MonteCarloGPU(TOptionPlan *plan, cudaStream_t stream)
+extern "C" void MonteCarloGPU(TOptionPlan *plan)
 {
-  /*  __TOptionData h_OptionData[MAX_OPTIONS];
+    __TOptionData *h_OptionData;
     __TOptionValue *h_CallValue = plan->h_CallValue;
 
-    if (plan->optionCount <= 0 || plan->optionCount > MAX_OPTIONS)
-    {
-        printf("MonteCarloGPU(): bad option count.\n");
-        return;
-    }
 
-    for (int i = 0; i < plan->optionCount; i++)
-    {
-        const double           T = plan->optionData[i].T;
-        const double           R = plan->optionData[i].R;
-        const double           V = plan->optionData[i].V;
+        const double           T = plan->optionData->T;
+        const double           R = plan->optionData->R;
+        const double           V = plan->optionData->V;
         const double       MuByT = (R - 0.5 * V * V) * T;
         const double    VBySqrtT = V * sqrt(T);
-        h_OptionData[i].S        = (real)plan->optionData[i].S;
-        h_OptionData[i].X        = (real)plan->optionData[i].X;
-        h_OptionData[i].MuByT    = (real)MuByT;
-        h_OptionData[i].VBySqrtT = (real)VBySqrtT;
-    }
+        &(h_OptionData)->S        = (real)plan->optionData->S;
+        *h_OptionData->X        = (real)plan->optionData->X;
+        *h_OptionData->MuByT    = (real)MuByT;
+        *h_OptionData->VBySqrtT = (real)VBySqrtT;
 
-    checkCudaErrors(cudaMemcpyToSymbolAsync(
+    cudaMemcpyToSymbol(
                         d_OptionData,
                         h_OptionData,
-                        plan->optionCount * sizeof(__TOptionData),
-                        0, cudaMemcpyHostToDevice, stream
-                    ));
+                        sizeof(__TOptionData),
+                        (size_t)0, cudaMemcpyHostToDevice
+                    );
 
-    MonteCarloOneBlockPerOption<<<plan->optionCount, THREAD_N, 0, stream>>>(
+    MonteCarloOneBlockPerOption<<<plan->optionCount, THREAD_N, 0>>>(
         plan->rngStates,
         plan->pathN
     );
-    getLastCudaError("MonteCarloOneBlockPerOption() execution failed\n");
 
 
-    checkCudaErrors(cudaMemcpyFromSymbolAsync(
+    cudaMemcpyFromSymbol(
                         h_CallValue,
                         d_CallValue,
-                        plan->optionCount * sizeof(__TOptionValue), (size_t)0, cudaMemcpyDeviceToHost, stream
-                    ));
+                        sizeof(__TOptionValue), (size_t)0, cudaMemcpyDeviceToHost
+                    );
 
-*/
     //cudaDeviceSynchronize();
 
 }
