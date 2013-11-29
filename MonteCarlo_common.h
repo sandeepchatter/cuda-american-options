@@ -58,5 +58,7 @@ typedef struct
     unsigned long long seed;
 } TOptionPlan;
 
+extern "C" void MonteCarloGPU(TOptionPlan *plan);
+
 
 #endif

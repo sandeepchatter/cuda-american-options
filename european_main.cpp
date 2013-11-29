@@ -16,7 +16,6 @@ float randFloat(float low, float high)
 
 
 
-extern "C" void MonteCarloGPU(TOptionPlan *plan, cudaStream_t stream);
 
 ///////////////////////////////////////////////////////////////////////////////
 // CPU reference functions
