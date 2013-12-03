@@ -102,10 +102,10 @@ extern "C" void MonteCarloGPU(TOptionPlan *plan)
         const double           V = plan->optionData->V;
         const double       MuByT = (R - 0.5 * V * V) * T;
         const double    VBySqrtT = V * sqrt(T);
-        &(h_OptionData)->S        = (real)plan->optionData->S;
-        *h_OptionData->X        = (real)plan->optionData->X;
-        *h_OptionData->MuByT    = (real)MuByT;
-        *h_OptionData->VBySqrtT = (real)VBySqrtT;
+        h_OptionData->S        = (real)plan->optionData->S;
+        h_OptionData->X        = (real)plan->optionData->X;
+        h_OptionData->MuByT    = (real)MuByT;
+        h_OptionData->VBySqrtT = (real)VBySqrtT;
 
     cudaMemcpyToSymbol(
                         d_OptionData,
