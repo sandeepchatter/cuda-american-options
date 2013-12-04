@@ -169,11 +169,11 @@ CUD_C = /usr/local/cuda-5.0/bin/nvcc
 #	DELETE
 
 clean:
-	rm	./*.o ./*.out \
-		./kernel/*.o \
-		./util/device/*.o \
-		./util/timer/*.o \
-		./util/regress/regress_CPU.o \
-		./stock_simulation/stock_simulation.o \
+rm	./*.o ./*.out \
+	./kernel/*.o \
+	./util/device/*.o \
+	./util/timer/*.o \
+	./util/regress/regress_CPU.o \
+	./stock_simulation/stock_simulation.o \
 
 #	END

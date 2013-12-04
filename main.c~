@@ -1,0 +1,40 @@
+// #ifdef __cplusplus
+// extern "C" {
+// #endif
+
+
+//	INCLUDE/DEFINE
+
+//	LIBRARIES
+
+#include <stdio.h>									// (in path known to compiler)	needed by printf
+#include <stdlib.h>									// (in path known to compiler)	needed by malloc, free
+
+//	HEADER
+
+#include "./main.h"									// (in current path)
+
+//	UTILITIES
+#include "./util/timer/timer.h"						// (in specified path)
+
+//  PACKAGES
+#include "./stock_simulation/stock_simulation.h"
+
+//	KERNEL
+
+#include "./kernel/kernel_gpu_cuda_wrapper.h"
+
+//	End
+
+//	MAIN FUNCTION
+
+int 
+main(	int argc, 
+		char* argv [])
+{
+
+	
+
+}
+
+//	END

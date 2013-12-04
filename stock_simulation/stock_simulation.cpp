@@ -1,20 +1,40 @@
-
+#include <stdlib.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 
 #include <cuda_runtime.h>
-
 #include <curand.h>
-#include "MonteCarlo_common.h"
 
-static double endCallValue(double S, double X, double r, double MuByT, double VBySqrtT)
+#include "stock_simulation.h"
+
+
+stock_simulation::stock_simulation( InputData &indata )
+{
+	// store dividend and expiry time for the option 
+	dividend = indata.dividend;
+	expity_time = indata.expity_time;
+	
+	// allocate memory to store all Monte Carlo paths, and intialize
+	// the initial value of the asset at t=0.
+	S.resize(indata.num_paths);
+	for (int i = 0; i < S.size(); i++)
+	{
+		S[i].resize(indata.num_time_steps+1);
+		S[i][0] = indata.S_0;
+	}
+	
+	// initilize the random generator
+	
+}
+
+double stock_simulation::EuropeanOptionsEndCallValue(double S, double X, double r, double MuByT, double VBySqrtT)
 {
     double callValue = S * exp(MuByT + VBySqrtT * r) - X;
     return (callValue > 0) ? callValue : 0;
 }
 
-extern "C" void MonteCarloCPU(
+void stock_simulation::EuropeanOptionsMonteCarloCPU(
         TOptionValue    &callValue,
         TOptionData optionData,
         float *h_Samples,
@@ -54,7 +74,7 @@ extern "C" void MonteCarloCPU(
     {
 
         double    sample = samples[pos];
-        double callValue = endCallValue(S, X, sample, MuByT, VBySqrtT);
+        double callValue = EuropeanOptionsEndCallValue(S, X, sample, MuByT, VBySqrtT);
         sum  += callValue;
         sum2 += callValue * callValue;
     }
