@@ -60,5 +60,17 @@ typedef struct
 
 extern "C" void MonteCarloGPU(TOptionPlan *plan);
 
+// modified from here
+struct InputData
+{
+	int num_paths;
+	int num_time_steps;
+	int random_seed;
+	float discount_rate;
+	float dividend;
+	float expiry_date;
+	float S_0;
+};
+
 
 #endif
