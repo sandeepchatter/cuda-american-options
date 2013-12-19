@@ -1,24 +1,33 @@
 * number of Monte Carlo paths for the stock
-num_paths = 100
+num_paths = 16384
 
 * number of discrete time steps where the american
 * option can be exercised 
 num_time_steps = 100
 
-* Discount rate or risk free rate of return
-discount_rate = 6
+* Discount rate or risk free rate of return (annualized)
+discount_rate = 0.04
 
-* Seed for random generator
-seed = 78542121
+* Seed for random generator, 78542121
+random_seed = 17081988
 
 * Dividend on underlying asset
 dividend = 0 
 
-* expiry date for the option
-expiry_date = 300
+* expiry time for the option (days)
+expiry_time = 720
 
 * stock price at t=0
-S_0 = 1.00
+S_0 = 0.8
+
+* volatility of the underlying asset
+volatility = 0.2
+
+*strike price for the underlying asset
+strike_price = 1
+
+* number of terms in Laguerre polynomials
+num_laguerre_poly = 3
 
 .end
 

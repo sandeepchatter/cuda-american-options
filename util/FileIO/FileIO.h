@@ -1,29 +1,27 @@
-#ifndef _STOCK_SIMULATION_H_
-#define _STOCK_SIMULATION_H_
-
-#ifdef __cplusplus
-//extern "C" {
-#endif
+#ifndef _FILEIO_H_
+#define _FILEIO_H_
 
 #include <fstream>
 #include "../timer/timer.h"
 #include "../MonteCarlo_structs.h"
 
+//#define SAVE_DATA_TO_LOG
+
+#define PRINT_DATA_TO_CONSOLE
+
 class FileIO
 {
 	char *outputFileName;
+	
 	public:
+	FILE* log_file;
+	
 	FileIO( ); 
 	
 	void readInputFile(char *inputFilename, InputData &indata);
 
-	void writeOutputFile();
+	void prepare_log_buffer();
 };
 
-//	END
-
-#ifdef __cplusplus
-//}
-#endif
 
 #endif

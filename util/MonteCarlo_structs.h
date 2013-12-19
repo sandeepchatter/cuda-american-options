@@ -60,16 +60,32 @@ typedef struct
 
 extern "C" void MonteCarloGPU(TOptionPlan *plan);
 
-// modified from here
+//=================================//=================================//
+/*! \struct InputData
+    
+    A structure to store all the variable values read from a input file
+    provided by the user. These variables specify the i) settings to be used
+    while evaluating american options using Monte Carlo and ii) statistical 
+    properties of the underlying asset.     
+*/
 struct InputData
 {
-	int num_paths;
-	int num_time_steps;
-	int random_seed;
-	float discount_rate;
-	float dividend;
-	float expiry_date;
-	float S_0;
+	// settings to be used
+	int num_paths;			/*!< Number of Monte Carlo paths to be generated
+								 for the underlying asset*/
+	int num_time_steps;		/*!< NUmber of time steps between t=0 and expiry time
+								 at which the American option can be exercised. */
+	int random_seed;		/*!< Seed for the random number generator */
+	int num_laguerre_poly;	/*!< Number of Laguerre polynomials to be used as
+								 basis functions*/
+	
+	// statistical properties of the underlying asset 
+	float discount_rate;	/*!< The risk free rate of return  */
+	float dividend;			/*!< Dividend on the underlying asset */
+	float expiry_time;		/*!< Expiry time of the option (in days)*/
+	float S_0;				/*!< The price of the asset at t=0 */
+	float volatility;		/*!< The volatility of the underlying asset */
+	float strike_price;		/*!< The agreed upon strike price of the underlying asset */
 };
 
 

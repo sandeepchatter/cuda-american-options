@@ -1,5 +1,5 @@
-#ifndef _STOCK_SIMULATION_H_
-#define _STOCK_SIMULATION_H_
+#ifndef _OPTION_KERNEL_H_
+#define _OPTION_KERNEL_H_
 
 #include <vector>
 #include <math.h>
@@ -8,7 +8,7 @@
 #include "../util/timer/timer.h"
 #include "../util/FileIO/FileIO.h"
 #include "../util/MonteCarlo_structs.h"
-#include "../util/regress/regress_CPU.h"
+//#include "../util/regress/regress_CPU.h"
 
 using namespace std;
 
@@ -21,7 +21,8 @@ using namespace std;
     Least-Squares Approach" to evaluate American Options based on user provided
     parameters for discount rate, volatility, strike price and dividend. 
 */
-class stock_simulation
+/*
+class stock_gpu_simulation
 {
 	// A 2D matrix, where each row represents a particular price path for
 	// the underlying asset and each column represents a discrete exercise date: 
@@ -65,7 +66,7 @@ class stock_simulation
 	
 	// An instance of the class that implements the linear regression using
 	// linear least squares method. 
-	Linear_Regression least_squares;
+	//Linear_Regression least_squares;
 	
 	// The calculated value of the American option, and the maxium relative error
 	// for 95% confidence
@@ -76,7 +77,7 @@ class stock_simulation
 	float european_option_value, eu_epsilon, var_eu;
 	
 	// a pointer fileIO object to write to log file
-	FileIO fileIO;
+	//FileIO fileIO;
 	public:
 	
 	/*! \brief Constructor for the stock_simulation class.
@@ -84,7 +85,7 @@ class stock_simulation
 	 *  The constructor initializes the private class varibles
 	 *  based on input read from the input file. 
 	 */
-	stock_simulation( );
+//	stock_gpu_simulation( );
 	
 	/*! \brief Generates price paths for underlying assets.
 	 *
@@ -92,7 +93,8 @@ class stock_simulation
 	 *  on risk-neutral no-arbritage setting using parameters as read from
 	 *  input file. 
 	 */
-	void generate_asset_price_paths();
+	//__device__ void generate_asset_price_paths_gpu(float *S, size_t pitch, int width, int height, random_normal normrnd, InputData indata);
+
 	
 	/*! \brief Finds the optimal stopping times for each price path.
 	 *
@@ -100,28 +102,31 @@ class stock_simulation
 	 *  to find the optimal stopping times so that return on American Option 
 	 *  is maximized.
 	 */
-	void find_optimal_exercise_boundary();
+	//__device__ void find_optimal_exercise_boundary_gpu(float *S, size_t pitch, int width, int height, InputData indata);
 	
 	/*! \brief Finds the continuation cash flow.
 	 *
 	 *  Calculates the expected payoff if the option is not exercised at
 	 *  given time instant. 
 	 */
-	void get_continuation_value_lg( vector<float> &g, vector<float> &h, vector<float>& x);
+	//void get_continuation_value_lg( vector<float> &g, vector<float> &h, vector<float>& x);
 	
 	/*! \brief Finds the continuation cash flow.
 	 *
 	 *  Calculates the expected payoff if the option is not exercised at
 	 *  given time instant. 
 	 */
-	void get_continuation_value_ch( vector<float> &g, vector<float> &h, vector<float>& x);
+	//void get_continuation_value_ch( vector<float> &g, vector<float> &h, vector<float>& x);
 	
 	
-	void get_black_scholes_continuation_value( vector<float>& x, float time, vector<float> &h); 
-	float phi( float x);
+	//__device__ void get_black_scholes_continuation_value_gpu(float &x, float time, float &h, InputData indata); 
+	//__device__ float phi( float x);
+
+
+    extern "C" void generate_and_find_exercise_boundary();
 	//=================================
 	/* For European options */
-	double EuropeanOptionsEndCallValue(
+	/*double EuropeanOptionsEndCallValue(
 		double S,
 		double X,
 		double r,
@@ -133,8 +138,9 @@ class stock_simulation
         TOptionData optionData,
         float *h_Samples,
         int pathN );
+    */
 	/* End European Options */
-};
+//};
 
 //	END
 
