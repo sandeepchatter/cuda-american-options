@@ -121,12 +121,18 @@ CUD_C = /usr/local/cuda-5.5/bin/nvcc
 #	KERNELS
 
 ./kernel/kernel_gpu_cuda_wrapper.o:	./kernel/kernel_gpu_cuda_wrapper.h \
-									./kernel/kernel_gpu_cuda_wrapper.cu \
-									./kernel/option_kernel.h \
-									./kernel/option_kernel.cu
+									./kernel/kernel_gpu_cuda_wrapper.cu
 	$(CUD_C)	./kernel/kernel_gpu_cuda_wrapper.cu \
 				-c -g\
 				-o ./kernel/kernel_gpu_cuda_wrapper.o \
+				-O3 
+				$(CUDA_FLAG)
+
+./kernel/option_kernel.o: ./kernel/option_kernel.h \
+                          ./kernel/option_kernel.cu
+	$(CUD_C)	./kernel/option_kernel.cu \
+				-c -g \
+				-o ./kernel/option_kernel.o \
 				-O3 \
 				$(CUDA_FLAG)
 

@@ -168,6 +168,7 @@ extern "C" void generate_and_find_exercise_boundary()
     FileIO fileIO;
     fileIO.readInputFile((char*)"./input/options.txt", h_indata);
 
+    float GPU_t = 0;
     // allocate memory to store all Monte Carlo paths, and intialize
     // the initial value of the asset at t=0.
     int num_paths = (h_indata.num_paths%2 == 0)?h_indata.num_paths:h_indata.num_paths+1;  
@@ -230,6 +231,10 @@ extern "C" void generate_and_find_exercise_boundary()
 
     checkError(cudaMalloc((void**)&d_norm_sample, size_norm));
 
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+    cudaEventRecord(start,0);
 
     checkError(cudaMemcpy(d_norm_sample, h_norm_sample, size_norm, cudaMemcpyHostToDevice));
 
@@ -261,6 +266,13 @@ extern "C" void generate_and_find_exercise_boundary()
     var_am = (var_am - pow(american_option_value, 2) )/width;
 
     printf("american option value = %f, varam = %f\n", american_option_value, var_am);
+
+    cudaEventRecord(stop,0);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&GPU_t, start, stop);
+
+    printf("Time for GPU: %f\n", GPU_t);
+
     cudaPrintfDisplay(stdout,true);
     cudaPrintfEnd();
     //err = cudaMemcpy2D(h_S, pitch, d_S, sizeof(float)*width, sizeof(float)*width, height, cudaMemcpyDeviceToHost);
