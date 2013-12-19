@@ -48,10 +48,11 @@ __device__ void get_black_scholes_continuation_value_gpu(float *x, float time, f
     //printf("d1: %g, d2: %g, den: %g, phi(-1*d2): %g, phi(-1*d1): %g, h[i]: %g, x[i]: %g\n", d1, d2, den, phi(-1*d2), phi(-1*d1), h[i], x[i]);
 }
 
-static __global__ void generate_asset_price_paths_and_cash_flow(float *S, float *cash_flow, float *option_value, int width, int height, InputData indata) {
+static __global__ void generate_asset_price_paths_and_cash_flow(float *S, float *cash_flow, float *option_value, int width, int height, InputData inputdata) {
 
     int tid = blockDim.x * blockIdx.x + threadIdx.x;
 
+    InputData indata = inputdata;
     // shared memory to make sure accesses are fast (not sure if no use of tid affects things)
 
     curandState state;
@@ -63,13 +64,14 @@ static __global__ void generate_asset_price_paths_and_cash_flow(float *S, float 
     float del_t = indata.expiry_time/(height-1)/365;
     float sigma = sqrt(del_t)*indata.volatility;
     S[tid*height] = indata.S_0;
+    float temp = indata.S_0;
     for (int j = 1; j < height; j++ )
     {
         float r_n = curand_normal(&state);
         if (tid%2 == 0) {
-            S[tid*height+j] = S[tid*height+j-1]*exp( drift*del_t + sigma*r_n);
+            S[tid*height+j] = temp = temp*exp(drift*del_t + sigma*r_n);
         } else {
-            S[tid*height+j] = S[tid*height+j-1]*exp( drift*del_t + sigma*-1*r_n);
+            S[tid*height+j] = temp = temp*exp(drift*del_t + sigma*-1*r_n);
         }
         /*
            if (tid == 0 && j == 1) {
@@ -90,11 +92,12 @@ static __global__ void generate_asset_price_paths_and_cash_flow(float *S, float 
 
 }
 
-static __global__ void find_optimal_exercise_boundary_gpu(float *S, float *cash_flow, float *option_value, int width, int height, InputData indata, float *x, float *h, int *optimal_exercise_boundary, float *cash_flow_am) {
+static __global__ void find_optimal_exercise_boundary_gpu(float *S, float *cash_flow, float *option_value, int width, int height, InputData inputdata, float *x, float *h, int *optimal_exercise_boundary, float *cash_flow_am) {
     int tid = blockDim.x * blockIdx.x + threadIdx.x;
 
     int expiry_index = width-1;
 
+    InputData indata = inputdata;
 
     float del_t = indata.expiry_time/(width-1)/365;
     // discount for merican counterpart
@@ -220,27 +223,10 @@ extern "C" void generate_and_find_exercise_boundary()
     random_normal normrnd;
     normrnd.zigset(h_indata.random_seed);
 
-    size_t size_norm = width*height*sizeof(float);
-    /*float *h_norm_sample = (float *) malloc(size_norm);
-
-    for (int i = 0; i < width; i++) {
-        for (int j = 0; j < height; j++) {    
-            h_norm_sample[i*height+j] = normrnd.RNOR();
-            //printf("h = %f\n", h_norm_sample[i*height+j]);
-        }
-    }
-    */
-
-  //  float *d_norm_sample = NULL;
-
-   // checkError(cudaMalloc((void**)&d_norm_sample, size_norm));
-
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     cudaEventRecord(start,0);
-
-    //checkError(cudaMemcpy(d_norm_sample, h_norm_sample, size_norm, cudaMemcpyHostToDevice));
 
 
     cudaPrintfInit();
@@ -254,48 +240,38 @@ extern "C" void generate_and_find_exercise_boundary()
     float var_eu = thrust::transform_reduce(dev_option_value_b, dev_option_value_e, square<float>(), (float)0, thrust::plus<float>());
 
 
-    printf("sum = %f, vareu = %f\n", sum, var_eu);
     float european_option_value  = sum/width;
     var_eu = (var_eu - pow(european_option_value, 2) )/width;
-    printf("european option value = %f, vareu = %f\n", european_option_value, var_eu);
-
 
 
     find_optimal_exercise_boundary_gpu<<<blocksPerGrid, threadsPerBlock>>>(d_S, d_cash_flow, d_option_value, width, height, h_indata, d_x, d_h, d_optimal_exercise_boundary, d_cash_flow_am);
 
     float sum_a = thrust::reduce(dev_option_value_b, dev_option_value_e, (float)0, thrust::plus<float>());
     float var_am = thrust::transform_reduce(dev_option_value_b, dev_option_value_e, square<float>(), (float)0, thrust::plus<float>());
-    printf("sum = %f, vareu = %f\n", sum_a, var_am);
     float american_option_value  = sum_a/width;
     var_am = (var_am - pow(american_option_value, 2) )/width;
 
-    printf("american option value = %f, varam = %f\n", american_option_value, var_am);
 
     cudaEventRecord(stop,0);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&GPU_t, start, stop);
 
+	printf("\n\nSUMMARY RESULTS FOR GPU\n------------------------\n");
+	printf(" i) American Option:\n");
+	printf("%40s:   %.6f \n", "Valuation at t=0", american_option_value);
+	printf("%40s:   %.6f \n", "Std dev of the samples", sqrt(var_am) );
+	float delta_am = 1.96*sqrt(var_am/width)/american_option_value;
+	printf("%40s:   %g (w.r.t. true mean)\n", "Maximum rel error (95% confidence)", 100*delta_am/(1-delta_am) );
+	printf("\nii) European Option:\n");
+	printf("%40s:   %.6f \n", "Valuation at t=0", european_option_value);
+	printf("%40s:   %.6f \n", "Std dev of the samples", sqrt(var_eu) );
+	float delta_eu = 1.96*sqrt(var_eu/width)/european_option_value;
+	printf("%40s:   %g (w.r.t. true mean)\n", "Maximum rel error (95% confidence)", 100*delta_eu/(1-delta_eu) );
+
     printf("Time for GPU: %fs\n", GPU_t/1000);
 
     cudaPrintfDisplay(stdout,true);
     cudaPrintfEnd();
-    //err = cudaMemcpy2D(h_S, pitch, d_S, sizeof(float)*width, sizeof(float)*width, height, cudaMemcpyDeviceToHost);
-    /*err = cudaMemcpy(h_S, d_S, width*sizeof(float)*height, cudaMemcpyDeviceToHost);
-      if (err != cudaSuccess) {
-      fprintf(stderr, "Failed to get device vector S (error code %s)\n", cudaGetErrorString(err));
-      exit(EXIT_FAILURE);
-      }
-      err = cudaMemcpy(h_cash_flow, d_cash_flow, width*sizeof(float), cudaMemcpyDeviceToHost);
-      if (err != cudaSuccess) {
-      fprintf(stderr, "Failed to get device vector cash_flow (error code %s)\n", cudaGetErrorString(err));
-      exit(EXIT_FAILURE);
-      }
-      err = cudaMemcpy(h_option_value, d_option_value, width*sizeof(float), cudaMemcpyDeviceToHost);
-      if (err != cudaSuccess) {
-      fprintf(stderr, "Failed to get device vector option_value (error code %s)\n", cudaGetErrorString(err));
-      exit(EXIT_FAILURE);
-      }
-     */
     /*
        for (int i = 0; i < width; i++) {
     //for (int j = 0; j < height; j++) {    
@@ -306,8 +282,6 @@ extern "C" void generate_and_find_exercise_boundary()
     //}
     }
      */
-
-
 
     checkError(cudaFree(d_S));
     checkError(cudaFree(d_x));
