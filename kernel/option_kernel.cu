@@ -79,7 +79,7 @@ static __global__ void generate_asset_price_paths_and_cash_flow(float *S, float 
            }
          */
     }
-    int expiry_index = width-1;
+    int expiry_index = height-1;
     // at the expiry time, the only choice is to exercise the option
     float discount_eu = exp(-1*indata.discount_rate*indata.expiry_time/365 );
 
@@ -110,15 +110,15 @@ static __global__ void find_optimal_exercise_boundary_gpu(float *S, float *cash_
         // find in the money paths
         put_value = fmaxf( indata.strike_price - S[tid*height+time], 0.0); //put
 
-        if ( put_value > 0 )
-        {
+        //if ( put_value > 0 )
+        //{
             x[tid] = S[tid*height+time];
             //y[tid] =  cash_flow_am[tid]*exp(-1*discount_rate*del_t*(optimal_exercise_boundary[tid]-time) ) ;
             //imp_indices[tid] = path;
-        } else {
-            x[tid] = -1;
+        //} else {
+         //   x[tid] = -1;
             //y[tid] = -1;
-        }
+        //}
         cash_flow[tid] = put_value;
 
         __syncthreads();
@@ -221,7 +221,7 @@ extern "C" void generate_and_find_exercise_boundary()
     normrnd.zigset(h_indata.random_seed);
 
     size_t size_norm = width*height*sizeof(float);
-    float *h_norm_sample = (float *) malloc(size_norm);
+    /*float *h_norm_sample = (float *) malloc(size_norm);
 
     for (int i = 0; i < width; i++) {
         for (int j = 0; j < height; j++) {    
@@ -229,6 +229,7 @@ extern "C" void generate_and_find_exercise_boundary()
             //printf("h = %f\n", h_norm_sample[i*height+j]);
         }
     }
+    */
 
   //  float *d_norm_sample = NULL;
 

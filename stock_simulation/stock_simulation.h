@@ -5,6 +5,7 @@
 #include <math.h>
 #include <sys/time.h>
 #include <sys/resource.h>
+#include <unistd.h>
 
 #include "../util/random/random_normal.h"
 #include "../util/timer/timer.h"
