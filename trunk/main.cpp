@@ -86,6 +86,8 @@ int main(void)
     CPU_t = (float) (end - begin) / CLOCKS_PER_SEC;
     printf("CPU time = %f\n", CPU_t);
 
+	option.get_resource_usage(stdout);
+	
    // stock_gpu_simulation option_gpu;
 
     //option_gpu.generate_and_find_exercise_boundary();
