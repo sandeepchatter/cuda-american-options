@@ -16,7 +16,9 @@ stock_simulation::stock_simulation( )
 	// read the input file for options relating to the number of paths, number
 	// of discrete time-steps etc. 
 	fileIO.readInputFile((char*)"./input/options.txt", indata);
-	printf( "num Monte Carlo paths: %d, num time-steps: %d \n", indata.num_paths, indata.num_time_steps);
+	printf( "Num Monte Carlo paths: %d\nNum time-steps: %d \n", indata.num_paths, indata.num_time_steps);
+	
+	start_time = get_wall_time();
 	
 	// store dividend, volatility and expiry time for the option 
 	dividend = indata.dividend;
@@ -37,7 +39,6 @@ stock_simulation::stock_simulation( )
 		S[i][0] = indata.S_0;
 	}
 	
-    printf("size = %d, %d\n", S.size(), S[0].size());
 	// initilize the random generator
 	normrnd.zigset(indata.random_seed);
 	
@@ -75,25 +76,8 @@ void stock_simulation::generate_asset_price_paths()
 			norm_sample = normrnd.RNOR();
 			S[i][j] = S[i][j-1]*exp( drift*del_t + sigma*norm_sample );
 			S[i+1][j] = S[i+1][j-1]*exp( drift*del_t + sigma*-1*norm_sample );
-            /*if (i == 0 && j == 1) {
-                printf("SS[%d][%d] = %f\n", i,j,S[i][j]);
-                printf("norm_sample = %f, drift = %f, del_t = %f, sigma = %f\n", norm_sample, drift, del_t, sigma);
-                printf("discountrate = %f, dividend = %f, volatility = %f, expirytime = %f\n", discount_rate, dividend, volatility, expiry_time);
-            }
-
-            */
-
 		}
 	}
-    /*
-	for ( int i = 0; i < 1; i=i++ )
-	{
-		for (int j = 0; j < S[i].size(); j++ )
-		{
-            printf("SS[%d][%d] = %f\n", i,j,S[i][j]);
-		}
-	}
-    */
 	#ifdef SAVE_DATA_TO_LOG
 	// In printing to log file, it is checked if S.size() <= 100
 	// and number of time-steps <= 10. Otherwise, nothing is printed.
@@ -152,13 +136,7 @@ void stock_simulation::find_optimal_exercise_boundary()
 		option_value = cash_flow[path]*discount_eu;
 		sum = sum + option_value;
 		var_eu += pow(option_value,2);
-        /*
-        printf("cashflow[%d] = %f\n",path,cash_flow[path]);
-        printf("option_value[%d] = %f\n",path,option_value);
-        printf("vareu[%d] = %f\n",path,pow(option_value,2));
-        */
 	}
-    printf("sum = %f, vareu=%f ~~~~~~~~~~~~\n", sum, var_eu);
 	
 	// find the value of the european option
 	european_option_value  = sum/S.size();
@@ -283,28 +261,33 @@ void stock_simulation::find_optimal_exercise_boundary()
 		optimal_exercise_boundary[i]*del_t*365, exp(-1*discount_rate*optimal_exercise_boundary[i]*del_t ) );
 	}*/
 	
-	
+	vector<float> sc; sc.push_back(S[0][0]);
+	vector<float> hc;
+	get_black_scholes_continuation_value( sc, 0, hc);
 	printf("\n\nSUMMARY RESULTS\n------------------------\n");
-	printf(" i) American Option:\n");
+	printf("  i) American Option:\n");
 	printf("%40s:   %.6f \n", "Valuation at t=0", american_option_value);
 	printf("%40s:   %.6f \n", "Std dev of the samples", sqrt(var_am) );
 	float delta_am = 1.96*sqrt(var_am/S.size())/american_option_value;
-	printf("%40s:   %g (w.r.t. true mean)\n", "Maximum rel error (95% confidence)", delta_am/(1-delta_am) );
-	printf("\nii) European Option:\n");
-	printf("%40s:   %.6f \n", "Valuation at t=0", european_option_value);
+	printf("%40s:   %.3g \% (w.r.t. true mean)\n", "Maximum rel error (95% confidence)", 100*delta_am/(1-delta_am) );
+	printf("\n ii) European Option:\n");
+	printf("%40s:   %.6f \n", "Valuation at t=0 by Black-Scholes", hc[0]);
+	printf("%40s:   %.6f \n", "Valuation at t=0 by Monte-Carlo", european_option_value);
 	printf("%40s:   %.6f \n", "Std dev of the samples", sqrt(var_eu) );
 	float delta_eu = 1.96*sqrt(var_eu/S.size())/european_option_value;
-	printf("%40s:   %g (w.r.t. true mean)\n", "Maximum rel error (95% confidence)", delta_eu/(1-delta_eu) );
+	printf("%40s:   %.3g \% (w.r.t. true mean)\n", "Maximum rel error (95% confidence)", 100*delta_eu/(1-delta_eu) );
+	printf("\niii) Early Exercise Value: %g\n", american_option_value - european_option_value);
 	#ifdef SAVE_DATA_TO_LOG
 			fprintf(fileIO.log_file, "\n\nFINAL RESULTS\n------------------------\n");
-			fprintf(fileIO.log_file, " i) American Option:\n");
+			fprintf(fileIO.log_file, "  i) American Option:\n");
 			fprintf(fileIO.log_file, "%40s:   %g \n", "Valuation at t=0", american_option_value);
 			fprintf(fileIO.log_file, "%40s:   %g \n", "Std dev of the samples", sqrt(var_am) );
 			fprintf(fileIO.log_file, "%40s:   %g (w.r.t. true mean)\n", "Maximum rel error (95% confidence)", delta_am/(1-delta_am) );
-			fprintf(fileIO.log_file, "ii) European Option:\n");
+			fprintf(fileIO.log_file, "\n ii) European Option:\n");
 			fprintf(fileIO.log_file, "%40s:   %g \n", "Valuation at t=0", european_option_value);
 			fprintf(fileIO.log_file, "%40s:   %g \n", "Std dev of the samples", sqrt(var_eu) );
 			fprintf(fileIO.log_file, "%40s:   %g (w.r.t. true mean)\n", "Maximum rel error (95% confidence)", delta_eu/(1-delta_eu) );
+			fprintf(fileIO.log_file, "\niii) Early Exercise Value: %g\n", american_option_value - european_option_value);
 			//fprintf(fileIO.log_file, "******************************************************\n");
 	#endif
 }
@@ -356,13 +339,134 @@ void stock_simulation::get_black_scholes_continuation_value( vector<float>& x, f
 		d2 = d2/den;
 
 		h[i] = strike_price*exp(-1*discount_rate*ttm)*phi(-1*d2) - x[i]*phi(-1*d1);
-		//printf("d1: %g, d2: %g, den: %g, phi(-1*d2): %g, phi(-1*d1): %g, h[i]: %g, x[i]: %g\n", d1, d2, den, phi(-1*d2), phi(-1*d1), h[i], x[i]);
+		//printf("d1: %g, d2: %g, den: %g, phi(-1*d2): %g, phi(-1*d1): %g, h[i]: %g, x[i]: %g\n",
+		//d1, d2, den, phi(-1*d2), phi(-1*d1), h[i], x[i]);
 	}
 } 
 
 float stock_simulation::phi( float x)
 {
 	return 0.5*(1 + erf(x/sqrt(2)));
+}
+
+// data about resource usage
+
+void stock_simulation::get_resource_usage( FILE* out)
+{
+	double current_time = get_wall_time();
+	double diff_time = (current_time - start_time);
+
+	struct rusage usage;
+	int who = RUSAGE_SELF;
+	int result = getrusage(who, &usage);
+	vector<string> arr;
+	
+	int VmPeak, VmSize, VmLck, VmHWM, VmRSS, VmData, VmStk, VmExe, VmLib, VmPTE, Threads;
+
+	//process_status = "";
+	bool status_available = true;
+	ifstream status;
+	status.open("/proc/self/status");
+	if (!status)
+	{
+		printf("%s\n", "Could not open file for reading status\n");
+		status_available = false;
+	}
+	if( status_available )
+	{
+		char str[255];
+		while (!status.eof())
+		{
+			status.getline(str, 255);
+			//printf("%s\n", str);
+			arr.clear();
+			line2arr(str, &arr, (char*)"\t: ");
+			//printf("arr[0] = %s, arr[1] = %s\n", arr[0].c_str(), arr[1].c_str());
+			if ( arr[0] == "VmPeak" )
+				VmPeak = atoi((char*)arr[1].c_str());
+			else if ( arr[0] == "VmSize" )
+				VmSize = atoi((char*)arr[1].c_str());
+			else if ( arr[0] == "VmLck" )
+				VmLck = atoi((char*)arr[1].c_str());
+			else if ( arr[0] == "VmHWM" )
+				VmHWM = atoi((char*)arr[1].c_str());
+			else if ( arr[0] == "VmRSS" )
+				VmRSS = atoi((char*)arr[1].c_str());
+			else if ( arr[0] == "VmData" )
+				VmData = atoi((char*)arr[1].c_str());
+			else if ( arr[0] == "VmStk" )
+				VmStk = atoi((char*)arr[1].c_str());
+			else if ( arr[0] == "VmExe" )
+				VmExe = atoi((char*)arr[1].c_str());
+			else if ( arr[0] == "VmLib" )
+				VmLib = atoi((char*)arr[1].c_str());
+			else if ( arr[0] == "VmPTE" )
+				VmPTE = atoi((char*)arr[1].c_str());
+			else if ( arr[0] == "Threads" )
+				Threads = atoi((char*)arr[1].c_str());
+		}
+	}
+	status.close();
+	
+	double total_user_cpu_time = usage.ru_utime.tv_sec + usage.ru_utime.tv_usec*pow(10,-6),
+	       total_syst_cpu_time = usage.ru_stime.tv_sec + usage.ru_stime.tv_usec*pow(10,-6);
+	double total_cpu_process_time = total_user_cpu_time + total_syst_cpu_time;
+	double num_cores = sysconf( _SC_NPROCESSORS_ONLN );
+	
+	if ( result != -1 )
+	{
+		fprintf(out,"\nRESOURCE USGAE DETAILS\n-------------------------------\n");	
+		fprintf(out, "\n%50s:  %.4f sec\n%50s:  %.4f sec\n%50s:  %.2f\%\n%50s:  %.2f Sec\n%50s:  %.2f megabyte\n%50s:  %.2f megabyte\n%50s:  %.2f megabyte\n%50s:  %.2f megabyte\n%50s:  %.2f megabyte\n%50s:  %.2f megabyte\n%50s:  %.2f megabyte\n%50s:  %.2f megabyte\n%50s:  %.2f megabyte\n%50s:  %.2f megabyte\n%50s:  %d\n%50s:  %d\n%50s:  %d\n%50s:  %d\n%50s:  %d\n%50s:  %d\n%50s:  %d\n%50s:  %d\n",
+		"Total user CPU-time used", total_user_cpu_time, 
+		"Total system CPU-time used", total_syst_cpu_time,
+		"Percent CPU used by this process", 100*total_cpu_process_time/(num_cores*diff_time),   
+		"This application has been running for", diff_time,
+		"Peak virtual memory size", 0.000976562*VmPeak,
+		"Current virtual memory size", 0.000976562*VmSize,
+		"Current locked memory size", 0.000976562*VmLck,
+		"Peak resident set size", 0.000976562*VmHWM,
+		"Current resident set size", 0.000976562*VmRSS,
+		"Size of Data", 0.000976562*VmData,
+		"Size of stack", 0.000976562*VmStk,
+		"Size of text segments", 0.000976562*VmExe,
+		"Shared library code size", 0.000976562*VmLib,
+		"Page table entries size (since Linux 2.6.10)", 0.000976562*VmPTE,
+		"Number of Threads", Threads,
+		"page reclaims (soft page faults) no I/O",usage.ru_minflt,   
+		"page faults (hard page faults) required I/O", usage.ru_majflt,
+		"Number of Swaps", usage.ru_nswap,
+		"Num-times the file system had to perform input", usage.ru_inblock,
+		"Num-times the file system had to perform output", usage.ru_oublock,
+		"Number of voluntary context switches", usage.ru_nvcsw,
+		"Number of involuntary context switches", usage.ru_nivcsw );
+	}
+	else
+	 	fprintf(out,"### There was an error retreiving the stats!!!!!\n");
+}
+
+void stock_simulation::line2arr (char* str, vector<string>* arr, char *tokenizer)
+{	
+	string ts;
+	char* tok;
+	(*arr).clear();
+	tok = strtok(str,tokenizer);
+	while ( tok != NULL )
+	{
+		//printf("%s", tok);
+		ts.assign(tok);
+		(*arr).push_back(ts);
+		tok = strtok(NULL,tokenizer);
+	}
+}
+
+double stock_simulation::get_wall_time()
+{
+    struct timeval time;
+    if (gettimeofday(&time,NULL)){
+        //  Handle error
+        return 0;
+    }
+    return (double)time.tv_sec + (double)time.tv_usec * .000001;
 }
 
 //=================================//=================================//=================================//

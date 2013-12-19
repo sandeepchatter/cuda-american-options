@@ -3,6 +3,8 @@
 
 #include <vector>
 #include <math.h>
+#include <sys/time.h>
+#include <sys/resource.h>
 
 #include "../util/random/random_normal.h"
 #include "../util/timer/timer.h"
@@ -77,6 +79,9 @@ class stock_simulation
 	
 	// a pointer fileIO object to write to log file
 	FileIO fileIO;
+	
+	// the start time fot the stock simulation class
+	double start_time;
 	public:
 	
 	/*! \brief Constructor for the stock_simulation class.
@@ -118,7 +123,12 @@ class stock_simulation
 	
 	
 	void get_black_scholes_continuation_value( vector<float>& x, float time, vector<float> &h); 
+	
 	float phi( float x);
+	
+	void get_resource_usage( FILE* out);
+	void line2arr (char* str, vector<string>* arr, char *tokenizer);
+	double get_wall_time();
 	//=================================
 	/* For European options */
 	double EuropeanOptionsEndCallValue(
