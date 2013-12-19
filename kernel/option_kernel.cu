@@ -139,7 +139,7 @@ static __global__ void find_optimal_exercise_boundary_gpu(float *S, float *cash_
           printf("\ntime: %gd, error-norm: %.3g, avg-error: %.3g", time*del_t*365, norm, norm/h.size());*/
 
         /********* USING BSE as boundary ************/
-
+        if (tid == 0)
         get_black_scholes_continuation_value_gpu( x, time, h, width, indata);
 
         if ( cash_flow[tid] > h[tid] )
