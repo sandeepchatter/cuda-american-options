@@ -3,7 +3,7 @@ num_paths = 65536
 
 * number of discrete time steps where the american
 * option can be exercised 
-num_time_steps = 100
+num_time_steps = 50
 
 * Discount rate or risk free rate of return (annualized)
 discount_rate = 0.04

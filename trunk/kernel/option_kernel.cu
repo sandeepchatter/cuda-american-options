@@ -7,7 +7,7 @@
 
 #include <curand.h>
 #include "option_kernel.h"
-#include "cuPrintf.cu"
+#include "../cuPrintf.cu"
 
 #include <thrust/transform_reduce.h>
 #include <thrust/functional.h>
@@ -59,7 +59,6 @@ static __global__ void generate_asset_price_paths_and_cash_flow(float *S, float 
 
     curand_init(indata.random_seed, tid, 0, &state);
 
-
     float drift = indata.discount_rate - indata.dividend - 0.5*pow(indata.volatility,2);
     float del_t = indata.expiry_time/(height-1)/365;
     float sigma = sqrt(del_t)*indata.volatility;
@@ -68,11 +67,11 @@ static __global__ void generate_asset_price_paths_and_cash_flow(float *S, float 
     for (int j = 1; j < height; j++ )
     {
         float r_n = curand_normal(&state);
-        if (tid%2 == 0) {
+        //if (tid%2 == 0) {
             S[tid*height+j] = temp = temp*exp(drift*del_t + sigma*r_n);
-        } else {
-            S[tid*height+j] = temp = temp*exp(drift*del_t + sigma*-1*r_n);
-        }
+        //} else {
+        //    S[tid*height+j] = temp = temp*exp(drift*del_t + sigma*-1*r_n);
+        //}
         /*
            if (tid == 0 && j == 1) {
            printf("s[%d][%d] = %f\n", tid,j,S[tid*height+j]);
@@ -95,7 +94,7 @@ static __global__ void generate_asset_price_paths_and_cash_flow(float *S, float 
 static __global__ void find_optimal_exercise_boundary_gpu(float *S, float *cash_flow, float *option_value, int width, int height, InputData inputdata, float *x, float *h, int *optimal_exercise_boundary, float *cash_flow_am) {
     int tid = blockDim.x * blockIdx.x + threadIdx.x;
 
-    int expiry_index = width-1;
+    int expiry_index = height-1;
 
     InputData indata = inputdata;
 
@@ -169,6 +168,8 @@ void checkError(cudaError_t err) {
 //Main computations
 extern "C" void generate_and_find_exercise_boundary()
 {
+	cudaDeviceReset();
+	
     InputData h_indata;
     // read the input file for options relating to the number of paths, number
     // of discrete time-steps etc. 
@@ -187,25 +188,25 @@ extern "C" void generate_and_find_exercise_boundary()
     float *d_option_value = NULL;
     float *d_cash_flow_am = NULL;
     int *d_optimal_exercise_boundary = NULL;
-    float *h_S = NULL;
+    /*float *h_S = NULL;
     float *h_x = NULL;
     float *h_h = NULL;
     float *h_cash_flow = NULL;
     float *h_option_value = NULL;
     float *h_cash_flow_am = NULL;
-    int *h_optimal_exercise_boundary = NULL;
+    int *h_optimal_exercise_boundary = NULL;*/
     int width = num_paths;
     int height = h_indata.num_time_steps+1;
     //size_t size = num_paths*(h_indata.num_time_steps+1)*sizeof(float);
     printf("width=%d\n", width);
 
-    h_S = (float*) malloc(sizeof(float)*width*height);
+    /*h_S = (float*) malloc(sizeof(float)*width*height);
     h_x = (float*) malloc(sizeof(float)*width);
     h_h = (float*) malloc(sizeof(float)*width);
     h_cash_flow = (float*) malloc(sizeof(float)*width);
     h_option_value = (float*) malloc(sizeof(float)*width);
     h_cash_flow_am = (float*) malloc(sizeof(float)*width);
-    h_optimal_exercise_boundary = (int*) malloc(sizeof(int)*width);
+    h_optimal_exercise_boundary = (int*) malloc(sizeof(int)*width);*/
 
     checkError(cudaMalloc((void**)&d_S, width*sizeof(float)*height));
     checkError(cudaMalloc((void**)&d_x, width*sizeof(float)));
@@ -230,10 +231,19 @@ extern "C" void generate_and_find_exercise_boundary()
 
 
     cudaPrintfInit();
-
+	
+	cudaEvent_t start2, stop2;
+    cudaEventCreate(&start2);
+    cudaEventCreate(&stop2);
+    cudaEventRecord(start2,0);
+	
     generate_asset_price_paths_and_cash_flow<<<blocksPerGrid,threadsPerBlock>>>(d_S, d_cash_flow, d_option_value, width, height, h_indata);     
-
-
+	
+	cudaEventRecord(stop2,0);
+    cudaEventSynchronize(stop2);
+    cudaEventElapsedTime(&GPU_t, start2, stop2);
+	printf("\nTime for generating price paths: %fs\n", GPU_t/1000);
+	
     thrust::device_ptr<float> dev_option_value_b(d_option_value);
     thrust::device_ptr<float> dev_option_value_e = dev_option_value_b + width;
     float sum = thrust::reduce(dev_option_value_b, dev_option_value_e, (float)0, thrust::plus<float>());
@@ -243,9 +253,18 @@ extern "C" void generate_and_find_exercise_boundary()
     float european_option_value  = sum/width;
     var_eu = (var_eu - pow(european_option_value, 2) )/width;
 
-
+	cudaEvent_t start3, stop3;
+    cudaEventCreate(&start3);
+    cudaEventCreate(&stop3);
+    cudaEventRecord(start3,0);
+    
     find_optimal_exercise_boundary_gpu<<<blocksPerGrid, threadsPerBlock>>>(d_S, d_cash_flow, d_option_value, width, height, h_indata, d_x, d_h, d_optimal_exercise_boundary, d_cash_flow_am);
 
+	cudaEventRecord(stop3,0);
+    cudaEventSynchronize(stop3);
+    cudaEventElapsedTime(&GPU_t, start3, stop3);
+	printf("\nTime for generating optimal exercise Boundary: %fs\n", GPU_t/1000);
+	
     float sum_a = thrust::reduce(dev_option_value_b, dev_option_value_e, (float)0, thrust::plus<float>());
     float var_am = thrust::transform_reduce(dev_option_value_b, dev_option_value_e, square<float>(), (float)0, thrust::plus<float>());
     float american_option_value  = sum_a/width;
@@ -261,14 +280,14 @@ extern "C" void generate_and_find_exercise_boundary()
 	printf("%40s:   %.6f \n", "Valuation at t=0", american_option_value);
 	printf("%40s:   %.6f \n", "Std dev of the samples", sqrt(var_am) );
 	float delta_am = 1.96*sqrt(var_am/width)/american_option_value;
-	printf("%40s:   %g (w.r.t. true mean)\n", "Maximum rel error (95% confidence)", 100*delta_am/(1-delta_am) );
+	printf("%40s:   %.3g %% (w.r.t. true mean)\n", "Maximum rel error (95% confidence)", 100*delta_am/(1-delta_am) );
 	printf("\nii) European Option:\n");
 	printf("%40s:   %.6f \n", "Valuation at t=0", european_option_value);
 	printf("%40s:   %.6f \n", "Std dev of the samples", sqrt(var_eu) );
 	float delta_eu = 1.96*sqrt(var_eu/width)/european_option_value;
-	printf("%40s:   %g (w.r.t. true mean)\n", "Maximum rel error (95% confidence)", 100*delta_eu/(1-delta_eu) );
+	printf("%40s:   %.3g %% (w.r.t. true mean)\n", "Maximum rel error (95% confidence)", 100*delta_eu/(1-delta_eu) );
 
-    printf("Time for GPU: %fs\n", GPU_t/1000);
+    printf("\nTime for GPU: %fs\n", GPU_t/1000);
 
     cudaPrintfDisplay(stdout,true);
     cudaPrintfEnd();
@@ -291,13 +310,13 @@ extern "C" void generate_and_find_exercise_boundary()
     checkError(cudaFree(d_cash_flow_am));
     checkError(cudaFree(d_optimal_exercise_boundary));
 
-    free(h_S);
+    /*free(h_S);
     free(h_x);
     free(h_h);
     free(h_cash_flow);
     free(h_option_value);
     free(h_cash_flow_am);
-    free(h_optimal_exercise_boundary);
+    free(h_optimal_exercise_boundary);*/
 
 
 }

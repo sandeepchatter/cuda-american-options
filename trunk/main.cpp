@@ -24,7 +24,6 @@
 #include "./util/FileIO/FileIO.h"		// A utility to read and write Disk files
 
 //	CUSTOM KERNEL
-#include "./kernel/kernel_gpu_cuda_wrapper.h"
 #include "./kernel/option_kernel.h"
 #include <time.h>
 
@@ -64,27 +63,32 @@ int main(void)
 
     printf("Expected: %f\n", callValueCPU.Expected);
     printf("Confidence: %f\n", callValueCPU.Confidence);
+	
+	clock_t begin, end;
+    float CPU_t = 0;
+	begin = clock();
+	...
+	end = clock();
+    CPU_t = (float) (end - begin) / CLOCKS_PER_SEC;
+    printf("CPU time = %f\n", CPU_t);
     */
 	
-    clock_t begin, end;
-    float CPU_t = 0;
-
-    begin = clock();
-
 	// Create an instance of stock_simulation class, which in this case
 	// is a put option. 
 	stock_simulation option;
 	
 	// For the given option, generate the price paths for the underlying asset.
+	clock_t begin, end;
+    float CPU_t = 0;
+	begin = clock();
 	option.generate_asset_price_paths();
-	
+	end = clock();
+    CPU_t = (float) (end - begin) / CLOCKS_PER_SEC;
+    printf("CPU time to generate price paths= %f\n", CPU_t);
+    
 	// Find the optimal exercise boundary for the American Option based on
 	// previously generated Price paths
 	option.find_optimal_exercise_boundary();
-
-    end = clock();
-    CPU_t = (float) (end - begin) / CLOCKS_PER_SEC;
-    printf("CPU time = %fs\n", CPU_t);
 
 	option.get_resource_usage(stdout);
 	

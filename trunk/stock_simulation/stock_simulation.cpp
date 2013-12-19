@@ -264,7 +264,7 @@ void stock_simulation::find_optimal_exercise_boundary()
 	vector<float> sc; sc.push_back(S[0][0]);
 	vector<float> hc;
 	get_black_scholes_continuation_value( sc, 0, hc);
-	printf("\n\nSUMMARY RESULTS\n------------------------\n");
+	printf("\n\nSUMMARY RESULTS FOR CPU\n--------------------------\n");
 	printf("  i) American Option:\n");
 	printf("%40s:   %.6f \n", "Valuation at t=0", american_option_value);
 	printf("%40s:   %.6f \n", "Std dev of the samples", sqrt(var_am) );
