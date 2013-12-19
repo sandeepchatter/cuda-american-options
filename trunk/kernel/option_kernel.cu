@@ -149,6 +149,15 @@ static __global__ void find_optimal_exercise_boundary_gpu(float *S, float *cash_
 
 }
 
+void checkError(cudaError_t err) {
+
+    if (err != cudaSuccess) {
+        fprintf(stderr, "cuda function failed (error code %s)\n", cudaGetErrorString(err));
+        exit(EXIT_FAILURE);
+    }
+
+}
+
 //Main computations
 extern "C" void generate_and_find_exercise_boundary()
 {
@@ -190,42 +199,14 @@ extern "C" void generate_and_find_exercise_boundary()
     h_cash_flow_am = (float*) malloc(sizeof(float)*width);
     h_optimal_exercise_boundary = (int*) malloc(sizeof(int)*width);
 
-    err = cudaMalloc((void**)&d_S, width*sizeof(float)*height);
-    if (err != cudaSuccess) {
-        fprintf(stderr, "Failed to allocate device vector S (error code %s)\n", cudaGetErrorString(err));
-        exit(EXIT_FAILURE);
-    }
+    checkError(cudaMalloc((void**)&d_S, width*sizeof(float)*height));
 
-    err = cudaMalloc((void**)&d_x, width*sizeof(float));
-    if (err != cudaSuccess) {
-        fprintf(stderr, "Failed to allocate device vector x (error code %s)\n", cudaGetErrorString(err));
-        exit(EXIT_FAILURE);
-    }
-    err = cudaMalloc((void**)&d_h, width*sizeof(float));
-    if (err != cudaSuccess) {
-        fprintf(stderr, "Failed to allocate device vector h (error code %s)\n", cudaGetErrorString(err));
-        exit(EXIT_FAILURE);
-    }
-    err = cudaMalloc((void**)&d_cash_flow, width*sizeof(float));
-    if (err != cudaSuccess) {
-        fprintf(stderr, "Failed to allocate device vector cash_flow (error code %s)\n", cudaGetErrorString(err));
-        exit(EXIT_FAILURE);
-    }
-    err = cudaMalloc((void**)&d_option_value, width*sizeof(float));
-    if (err != cudaSuccess) {
-        fprintf(stderr, "Failed to allocate device vector option_value (error code %s)\n", cudaGetErrorString(err));
-        exit(EXIT_FAILURE);
-    }
-    err = cudaMalloc((void**)&d_cash_flow_am, width*sizeof(float));
-    if (err != cudaSuccess) {
-        fprintf(stderr, "Failed to allocate device vector cash_flow_am (error code %s)\n", cudaGetErrorString(err));
-        exit(EXIT_FAILURE);
-    }
-    err = cudaMalloc((void**)&d_optimal_exercise_boundary, width*sizeof(int));
-    if (err != cudaSuccess) {
-        fprintf(stderr, "Failed to allocate device vector optimal_exercise_boundary (error code %s)\n", cudaGetErrorString(err));
-        exit(EXIT_FAILURE);
-    }
+    checkError(cudaMalloc((void**)&d_x, width*sizeof(float)));
+    checkError(cudaMalloc((void**)&d_h, width*sizeof(float)));
+    checkError(cudaMalloc((void**)&d_cash_flow, width*sizeof(float)));
+    checkError(cudaMalloc((void**)&d_option_value, width*sizeof(float)));
+    checkError(cudaMalloc((void**)&d_cash_flow_am, width*sizeof(float)));
+    checkError(cudaMalloc((void**)&d_optimal_exercise_boundary, width*sizeof(int)));
 
     int threadsPerBlock = 256;
     int blocksPerGrid = width/threadsPerBlock;
@@ -247,19 +228,11 @@ extern "C" void generate_and_find_exercise_boundary()
 
     float *d_norm_sample = NULL;
 
-    err = cudaMalloc((void**)&d_norm_sample, size_norm);
+    checkError(cudaMalloc((void**)&d_norm_sample, size_norm));
 
-    if (err != cudaSuccess) {
-        fprintf(stderr, "Failed to allocate device vector norm_sample (error code %s)\n", cudaGetErrorString(err));
-        exit(EXIT_FAILURE);
-    }
 
-    err = cudaMemcpy(d_norm_sample, h_norm_sample, size_norm, cudaMemcpyHostToDevice);
+    checkError(cudaMemcpy(d_norm_sample, h_norm_sample, size_norm, cudaMemcpyHostToDevice));
 
-    if (err != cudaSuccess) {
-        fprintf(stderr, "Failed to copy device vector norm_sample (error code %s)\n", cudaGetErrorString(err));
-        exit(EXIT_FAILURE);
-    }
 
     cudaPrintfInit();
 
