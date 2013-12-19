@@ -48,11 +48,16 @@ __device__ void get_black_scholes_continuation_value_gpu(float *x, float time, f
     //printf("d1: %g, d2: %g, den: %g, phi(-1*d2): %g, phi(-1*d1): %g, h[i]: %g, x[i]: %g\n", d1, d2, den, phi(-1*d2), phi(-1*d1), h[i], x[i]);
 }
 
-static __global__ void generate_asset_price_paths_and_cash_flow(float *S, float *cash_flow, float *option_value, int width, int height, float *norm_sample, InputData indata) {
+static __global__ void generate_asset_price_paths_and_cash_flow(float *S, float *cash_flow, float *option_value, int width, int height, InputData indata) {
 
     int tid = blockDim.x * blockIdx.x + threadIdx.x;
 
     // shared memory to make sure accesses are fast (not sure if no use of tid affects things)
+
+    curandState state;
+
+    curand_init(indata.random_seed, tid, 0, &state);
+
 
     float drift = indata.discount_rate - indata.dividend - 0.5*pow(indata.volatility,2);
     float del_t = indata.expiry_time/(height-1)/365;
@@ -60,10 +65,11 @@ static __global__ void generate_asset_price_paths_and_cash_flow(float *S, float 
     S[tid*height] = indata.S_0;
     for (int j = 1; j < height; j++ )
     {
+        float r_n = curand_normal(&state);
         if (tid%2 == 0) {
-            S[tid*height+j] = S[tid*height+j-1]*exp( drift*del_t + sigma*norm_sample[tid*height+j] );
+            S[tid*height+j] = S[tid*height+j-1]*exp( drift*del_t + sigma*r_n);
         } else {
-            S[tid*height+j] = S[tid*height+j-1]*exp( drift*del_t + sigma*-1*norm_sample[tid*height+j] );
+            S[tid*height+j] = S[tid*height+j-1]*exp( drift*del_t + sigma*-1*r_n);
         }
         /*
            if (tid == 0 && j == 1) {
@@ -161,7 +167,6 @@ void checkError(cudaError_t err) {
 extern "C" void generate_and_find_exercise_boundary()
 {
     InputData h_indata;
-    cudaError_t err = cudaSuccess;
     // read the input file for options relating to the number of paths, number
     // of discrete time-steps etc. 
     FileIO fileIO;
@@ -200,7 +205,6 @@ extern "C" void generate_and_find_exercise_boundary()
     h_optimal_exercise_boundary = (int*) malloc(sizeof(int)*width);
 
     checkError(cudaMalloc((void**)&d_S, width*sizeof(float)*height));
-
     checkError(cudaMalloc((void**)&d_x, width*sizeof(float)));
     checkError(cudaMalloc((void**)&d_h, width*sizeof(float)));
     checkError(cudaMalloc((void**)&d_cash_flow, width*sizeof(float)));
@@ -226,21 +230,21 @@ extern "C" void generate_and_find_exercise_boundary()
         }
     }
 
-    float *d_norm_sample = NULL;
+  //  float *d_norm_sample = NULL;
 
-    checkError(cudaMalloc((void**)&d_norm_sample, size_norm));
+   // checkError(cudaMalloc((void**)&d_norm_sample, size_norm));
 
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     cudaEventRecord(start,0);
 
-    checkError(cudaMemcpy(d_norm_sample, h_norm_sample, size_norm, cudaMemcpyHostToDevice));
+    //checkError(cudaMemcpy(d_norm_sample, h_norm_sample, size_norm, cudaMemcpyHostToDevice));
 
 
     cudaPrintfInit();
 
-    generate_asset_price_paths_and_cash_flow<<<blocksPerGrid,threadsPerBlock>>>(d_S, d_cash_flow, d_option_value, width, height, d_norm_sample, h_indata);     
+    generate_asset_price_paths_and_cash_flow<<<blocksPerGrid,threadsPerBlock>>>(d_S, d_cash_flow, d_option_value, width, height, h_indata);     
 
 
     thrust::device_ptr<float> dev_option_value_b(d_option_value);
@@ -270,7 +274,7 @@ extern "C" void generate_and_find_exercise_boundary()
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&GPU_t, start, stop);
 
-    printf("Time for GPU: %f\n", GPU_t);
+    printf("Time for GPU: %fs\n", GPU_t/1000);
 
     cudaPrintfDisplay(stdout,true);
     cudaPrintfEnd();
@@ -301,6 +305,24 @@ extern "C" void generate_and_find_exercise_boundary()
     //}
     }
      */
+
+
+
+    checkError(cudaFree(d_S));
+    checkError(cudaFree(d_x));
+    checkError(cudaFree(d_h));
+    checkError(cudaFree(d_cash_flow));
+    checkError(cudaFree(d_option_value));
+    checkError(cudaFree(d_cash_flow_am));
+    checkError(cudaFree(d_optimal_exercise_boundary));
+
+    free(h_S);
+    free(h_x);
+    free(h_h);
+    free(h_cash_flow);
+    free(h_option_value);
+    free(h_cash_flow_am);
+    free(h_optimal_exercise_boundary);
 
 
 }

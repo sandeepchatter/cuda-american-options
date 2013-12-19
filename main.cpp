@@ -84,7 +84,7 @@ int main(void)
 
     end = clock();
     CPU_t = (float) (end - begin) / CLOCKS_PER_SEC;
-    printf("CPU time = %f\n", CPU_t);
+    printf("CPU time = %fs\n", CPU_t);
 
 	option.get_resource_usage(stdout);
 	
