@@ -1,0 +1,57 @@
+TIMESTAMP: Sun Dec  8 00:16:50 2013
+
+
+SETTINGS FOR SIMULATION
+-------------------------------
+
+             Number of Monte Carlo Paths:   10 
+      Number of time-steps for each path:   4 
+                        Random seed used:   78542121 
+     Number of Laguerre polynomials used:   3 
+
+PROPERTIES OF THE OPTION
+-------------------------------
+
+            The risk free rate of return:   0.060 
+        Dividend on the underlying asset:   0.060 
+     Expiry time of the option (in days):   300.000 
+                            Strike Price:   1.050 
+      Volatility on the underlying asset:   0.250 
+           The price of the asset at t=0:   1.000 
+
+STOCK PRICE PATHS (time in days)
+----------------------------------
+
+Path No.   t = 0       t = 75      t = 150     t = 225     t = 300     
+----------------------------------------------------------
+         1 1.0000      1.0900      1.0269      0.8219      0.7124      
+         2 1.0000      0.8341      0.9112      1.0202      1.1105      
+         3 1.0000      0.8747      0.9438      0.8703      0.8776      
+         4 1.0000      0.9863      0.8134      0.8070      0.7765      
+         5 1.0000      0.7158      0.6763      0.6543      0.5980      
+         6 1.0000      1.0574      1.1218      1.1502      1.2396      
+         7 1.0000      0.9823      0.8164      0.7474      0.7532      
+         8 1.0000      0.9838      0.9447      0.8060      0.8520      
+         9 1.0000      1.0811      0.9249      1.1407      1.2598      
+        10 1.0000      1.2515      1.4577      1.4209      1.4668      
+
+CASH FLOW AT t = 16 days (expiry date)
+----------------------------------
+
+Path No     Cash Flow   Discounted
+-------     ---------   ----------
+         1  0.3376      0.3213    
+         2  0.0000      0.0000    
+         3  0.1724      0.1641    
+         4  0.2735      0.2603    
+         5  0.4520      0.4302    
+         6  0.0000      0.0000    
+         7  0.2968      0.2825    
+         8  0.1980      0.1885    
+         9  0.0000      0.0000    
+        10  0.0000      0.0000    
+
+
+******************************************************
+* Value of Corresponding European Option: 0.1647 *
+******************************************************
