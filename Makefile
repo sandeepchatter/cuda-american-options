@@ -66,7 +66,7 @@ CUDA_FLAG = -arch sm_20
 
 #	****** NVCC ******
 
-CUD_C = /usr/local/cuda-5.0/bin/nvcc
+CUD_C = /usr/local/cuda-5.5/bin/nvcc
 # OMP_FLAG = 	-Xcompiler paste_one_here
 
 #	PGCC
@@ -84,20 +84,24 @@ CUD_C = /usr/local/cuda-5.0/bin/nvcc
 #	****** EXECUTABLES (LINK OBJECTS TOGETHER INTO BINARY) ****** 
 
 ./ao.exe:	./main.o \
-			./kernel/kernel_gpu_cuda_wrapper.o \
 			./stock_simulation/stock_simulation.o \
+			./kernel/kernel_gpu_cuda_wrapper.o \
+			./kernel/option_kernel.o \
 			./util/device/device.o \
 			./util/timer/timer.o \
 			./util/regress/regress_CPU.o \
+			./util/regress/LinearAlgebraSubroutines.o \
 			./util/FileIO/FileIO.o
 	$(CUD_C)	./main.o \
-				./kernel/kernel_gpu_cuda_wrapper.o \
 				./stock_simulation/stock_simulation.o \
+				./kernel/kernel_gpu_cuda_wrapper.o \
+				./kernel/option_kernel.o \
 				./util/device/device.o \
 				./util/timer/timer.o \
 				./util/regress/regress_CPU.o \
+				./util/regress/LinearAlgebraSubroutines.o \
 				./util/FileIO/FileIO.o \
-				-lm \
+				-lm -g\
 				$(CUDA_LIB_DIR) \
 				$(CUDA_LIB) \
 				$(OMP_LIB)
@@ -107,18 +111,21 @@ CUD_C = /usr/local/cuda-5.0/bin/nvcc
 #	MAIN FUNCTION
 
 ./main.o:	./main.h \
+			./stock_simulation/stock_simulation.h \
 			./main.cpp
 	$(CUD_C)	./main.cpp \
-				-c \
+				-c -g\
 				-o ./main.o \
 				-O3
 
 #	KERNELS
 
 ./kernel/kernel_gpu_cuda_wrapper.o:	./kernel/kernel_gpu_cuda_wrapper.h \
-									./kernel/kernel_gpu_cuda_wrapper.cu
+									./kernel/kernel_gpu_cuda_wrapper.cu \
+									./kernel/option_kernel.h \
+									./kernel/option_kernel.cu
 	$(CUD_C)	./kernel/kernel_gpu_cuda_wrapper.cu \
-				-c \
+				-c -g\
 				-o ./kernel/kernel_gpu_cuda_wrapper.o \
 				-O3 \
 				$(CUDA_FLAG)
@@ -128,7 +135,7 @@ CUD_C = /usr/local/cuda-5.0/bin/nvcc
 ./util/device/device.o:	./util/device/device.h \
 						./util/device/device.cu
 	$(CUD_C)	./util/device/device.cu \
-				-c \
+				-c -g\
 				-o ./util/device/device.o \
 				-O3 \
 				$(CUDA_FLAG)
@@ -136,34 +143,44 @@ CUD_C = /usr/local/cuda-5.0/bin/nvcc
 ./util/timer/timer.o:	./util/timer/timer.h \
 						./util/timer/timer.cpp
 	$(CUD_C)	./util/timer/timer.cpp \
-				-c \
+				-c -g\
 				-o ./util/timer/timer.o \
 				-O3
 
 ./util/regress/regress_CPU.o:	./util/regress/regress_CPU.h \
-						./util/regress/regress_CPU.cpp
+								./util/regress/LinearAlgebraSubroutines.h \
+								./util/regress/LinearAlgebraSubroutines.cpp \
+								./util/regress/regress_CPU.cpp
 	$(CUD_C)	./util/regress/regress_CPU.cpp \
-				-c \
+				-c -g\
 				-o ./util/regress/regress_CPU.o \
 				-O3
+
+#./util/regress/LinearAlgebraSubroutines.o:	./util/regress/LinearAlgebraSubroutines.h \
+#											./util/regress/LinearAlgebraSubroutines.cpp
+#	$(CUD_C)	./util/regress/LinearAlgebraSubroutines.cpp \
+#				-c \
+#				-o ./util/regress/LinearAlgebraSubroutines.o \
+#				-O3
 
 ./util/FileIO/FileIO.o:	./util/FileIO/FileIO.h \
 						./util/FileIO/FileIO.cpp
 	$(CUD_C)	./util/FileIO/FileIO.cpp \
-				-c \
+				-c -g\
 				-o ./util/FileIO/FileIO.o \
 				-O3
+
 
 # PACKAGES
 
 ./stock_simulation/stock_simulation.o:	./util/random/random_normal.h \
+										./util/regress/regress_CPU.cpp \
 										./stock_simulation/stock_simulation.h \
 										./stock_simulation/stock_simulation.cpp
 	$(CUD_C)	./stock_simulation/stock_simulation.cpp \
-				-c \
+				-c -g\
 				-o ./stock_simulation/stock_simulation.o \
 				-O3
-
 #	END
 
 #	DELETE
