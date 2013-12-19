@@ -88,7 +88,7 @@ static __global__ void generate_asset_price_paths_and_cash_flow(float *S, float 
     cash_flow[tid] = fmaxf(indata.strike_price - S[tid*height+expiry_index], 0.0); //put
     option_value[tid] = cash_flow[tid]*discount_eu;
 
-    __syncthreads();
+    //__syncthreads();
 
 }
 
@@ -124,7 +124,7 @@ static __global__ void find_optimal_exercise_boundary_gpu(float *S, float *cash_
         //}
         cash_flow[tid] = put_value;
 
-        __syncthreads();
+        //__syncthreads();
 
         /********* USING LSM as boundary ************/
         //vector<float> g;
@@ -148,7 +148,7 @@ static __global__ void find_optimal_exercise_boundary_gpu(float *S, float *cash_
             cash_flow_am[tid] = fmaxf(indata.strike_price - S[tid*height+time], 0.0);
         }
 
-        __syncthreads();
+    //    __syncthreads();
     }
 
     cash_flow_am[tid] = fmaxf(indata.strike_price - S[tid*height+optimal_exercise_boundary[tid]], 0.0); 
