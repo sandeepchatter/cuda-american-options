@@ -7,7 +7,6 @@
 
 #include <curand.h>
 #include "option_kernel.h"
-#include "MonteCarlo_reduction.cuh"
 #include "cuPrintf.cu"
 
 #include <thrust/transform_reduce.h>
