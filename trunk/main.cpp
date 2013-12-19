@@ -26,6 +26,7 @@
 //	CUSTOM KERNEL
 #include "./kernel/kernel_gpu_cuda_wrapper.h"
 #include "./kernel/option_kernel.h"
+#include <time.h>
 
 using namespace std;
 
@@ -65,6 +66,11 @@ int main(void)
     printf("Confidence: %f\n", callValueCPU.Confidence);
     */
 	
+    clock_t begin, end;
+    float CPU_t = 0;
+
+    begin = clock();
+
 	// Create an instance of stock_simulation class, which in this case
 	// is a put option. 
 	stock_simulation option;
@@ -72,6 +78,9 @@ int main(void)
 	// For the given option, generate the price paths for the underlying asset.
 	option.generate_asset_price_paths();
 	
+    end = clock();
+    CPU_t = (float) (end - begin) / CLOCKS_PER_SEC;
+    printf("CPU time = %f\n", CPU_t);
 	// Find the optimal exercise boundary for the American Option based on
 	// previously generated Price paths
 	option.find_optimal_exercise_boundary();
