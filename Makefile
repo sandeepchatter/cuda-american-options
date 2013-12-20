@@ -25,7 +25,7 @@ endif
 CUDA_LIB =	-lcuda \
 			-lcudart \
 			-lcurand
-CUDA_FLAG = -arch sm_35 
+CUDA_FLAG = -arch sm_20
 
 #	END
 
