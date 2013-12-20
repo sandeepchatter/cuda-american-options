@@ -81,15 +81,23 @@ int main(void)
 	clock_t begin, end;
     float CPU_t = 0;
 	begin = clock();
+	
 	option.generate_asset_price_paths();
+	
 	end = clock();
     CPU_t = (float) (end - begin) / CLOCKS_PER_SEC;
-    printf("CPU time to generate price paths= %f\n", CPU_t);
+    printf("\n### CPU: Time to generate price paths = %f\n", CPU_t);
     
 	// Find the optimal exercise boundary for the American Option based on
 	// previously generated Price paths
+	CPU_t = 0;
+	begin = clock();
+	
 	option.find_optimal_exercise_boundary();
-
+	
+	end = clock();
+    CPU_t = (float) (end - begin) / CLOCKS_PER_SEC;
+    printf("\n### CPU: Time to generate optimal exercise boundary = %f\n", CPU_t);
 	option.get_resource_usage(stdout);
 	
    // stock_gpu_simulation option_gpu;
