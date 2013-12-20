@@ -189,10 +189,10 @@ void stock_simulation::find_optimal_exercise_boundary()
 			cash_flow[path] = put_value;
 		}
 		
-		/********* USING LSM as boundary ************/
+		/********* USING LSM as boundary ***********
 		vector<float> g;
 		least_squares.find_linear_fit( x, y, g, num_laguerre_poly);
-		get_continuation_value_ch( g, h, x );
+		get_continuation_value_ch( g, h, x );*/
 		
 		/*float norm = 0;
 		for( int z = 0; z < h.size(); z++ )
@@ -202,7 +202,7 @@ void stock_simulation::find_optimal_exercise_boundary()
 		printf("\ntime: %gd, error-norm: %.3g, avg-error: %.3g", time*del_t*365, norm, norm/h.size());*/
 		
 		/********* USING BSE as boundary ************/
-		//get_black_scholes_continuation_value( x, time, h);
+		get_black_scholes_continuation_value( x, time, h);
 		
 		for ( int i = 0; i < imp_indices.size(); i++ )
 		{
