@@ -415,7 +415,7 @@ void stock_simulation::get_resource_usage( FILE* out)
 	
 	if ( result != -1 )
 	{
-		fprintf(out,"\nRESOURCE USGAE DETAILS\n-------------------------------\n");	
+		fprintf(out,"\nRESOURCE USGAE FOR CPU\n-------------------------------\n");	
 		fprintf(out, "\n%50s:  %.4f sec\n%50s:  %.4f sec\n%50s:  %.2f\%\n%50s:  %.2f Sec\n%50s:  %.2f megabyte\n%50s:  %.2f megabyte\n%50s:  %.2f megabyte\n%50s:  %.2f megabyte\n%50s:  %.2f megabyte\n%50s:  %.2f megabyte\n%50s:  %.2f megabyte\n%50s:  %.2f megabyte\n%50s:  %.2f megabyte\n%50s:  %.2f megabyte\n%50s:  %d\n%50s:  %d\n%50s:  %d\n%50s:  %d\n%50s:  %d\n%50s:  %d\n%50s:  %d\n%50s:  %d\n",
 		"Total user CPU-time used", total_user_cpu_time, 
 		"Total system CPU-time used", total_syst_cpu_time,
