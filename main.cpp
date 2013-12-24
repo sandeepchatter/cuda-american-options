@@ -72,6 +72,9 @@ int main(void)
     CPU_t = (float) (end - begin) / CLOCKS_PER_SEC;
     printf("CPU time = %f\n", CPU_t);
     */
+
+    //option_gpu.generate_and_find_exercise_boundary();
+    generate_and_find_exercise_boundary();
 	
 	// Create an instance of stock_simulation class, which in this case
 	// is a put option. 
@@ -100,10 +103,7 @@ int main(void)
     printf("\n### CPU: Time to generate optimal exercise boundary = %f\n", CPU_t);
 	option.get_resource_usage(stdout);
 	
-   // stock_gpu_simulation option_gpu;
-
-    //option_gpu.generate_and_find_exercise_boundary();
-    generate_and_find_exercise_boundary();
+   
 	
     return 0;
 }
