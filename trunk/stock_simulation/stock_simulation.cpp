@@ -16,6 +16,7 @@ stock_simulation::stock_simulation( )
 	// read the input file for options relating to the number of paths, number
 	// of discrete time-steps etc. 
 	fileIO.readInputFile((char*)"./input/options.txt", indata);
+	printf( "\nCPU COMPUTATION\n=============================\n");
 	printf( "Num Monte Carlo paths: %d\nNum time-steps: %d \n", indata.num_paths, indata.num_time_steps);
 	
 	start_time = get_wall_time();
