@@ -48,11 +48,16 @@ __device__ float get_black_scholes_continuation_value_gpu(float x, float time, i
     //printf("d1: %g, d2: %g, den: %g, phi(-1*d2): %g, phi(-1*d1): %g, h[i]: %g, x[i]: %g\n", d1, d2, den, phi(-1*d2), phi(-1*d1), h[i], x[i]);
 }
 
+static __global__ void generate_states(float seed, curandState *state) {
+    int tid = blockDim.x * blockIdx.x + threadIdx.x;
+    curand_init(seed, tid, 0, &state[tid]);
+    
+}
 
-static __global__ void generate_asset_price_paths_and_cash_flow(float *S, float *cash_flow, float *option_value, int width, int height, InputData indata, float *norm_sample) {
+static __global__ void generate_asset_price_paths_and_cash_flow(curandState *states, float *S, float *cash_flow, float *option_value, int width, int height, InputData indata) {
 
     int tid = blockDim.x * blockIdx.x + threadIdx.x;
-
+    curandState localState = states[tid];
     //InputData indata = inputdata;
     // shared memory to make sure accesses are fast (not sure if no use of tid affects things)
 
@@ -67,7 +72,8 @@ static __global__ void generate_asset_price_paths_and_cash_flow(float *S, float 
     float temp = indata.S_0;
     for (int j = 1; j < height; j++ )
     {
-	    S[tid*height+j] = temp = temp*exp(drift*del_t + sigma*norm_sample[tid*height+j]);
+//	    S[tid*height+j] = temp = temp*exp(drift*del_t + sigma*norm_sample[tid*height+j]);
+	    S[tid*height+j] = temp = temp*exp(drift*del_t + sigma*curand_normal(&localState));
     }
     
     int expiry_index = height-1;
@@ -153,7 +159,7 @@ static __global__ void find_optimal_exercise_boundary_gpu(float *S, float *cash_
 
 }
 
-static __global__ void generate_asset_price_paths_and_cash_flow_multiple_paths(float *S, float *cash_flow, float *option_value, int width, int height, InputData indata, float *norm_sample) {
+static __global__ void generate_asset_price_paths_and_cash_flow_multiple_paths(curandState *states, float *S, float *cash_flow, float *option_value, int width, int height, InputData indata) {
 
     int tid = blockDim.x * blockIdx.x + threadIdx.x;
 
@@ -162,15 +168,34 @@ static __global__ void generate_asset_price_paths_and_cash_flow_multiple_paths(f
     float sigma = sqrt(del_t)*indata.volatility;
     S[tid*height] = indata.S_0;
     float temp  = indata.S_0;
-    float temp1 = temp;
-    float temp2 = temp;
-    float temp3 = temp;
+    //float temp1 = temp;
+    //float temp2 = temp;
+    //float temp3 = temp;
+    curandState localState = states[tid];
+    #pragma unroll
     for (int j = 1; j < height; j++ )
     {
-	    S[(4*tid  )*height+j] = temp  = temp *exp(drift*del_t + sigma*norm_sample[(4*tid  )*height+j]);
-	    S[(4*tid+1)*height+j] = temp1 = temp1*exp(drift*del_t + sigma*norm_sample[(4*tid+1)*height+j]);
-	    S[(4*tid+2)*height+j] = temp2 = temp2*exp(drift*del_t + sigma*norm_sample[(4*tid+2)*height+j]);
-	    S[(4*tid+3)*height+j] = temp3 = temp3*exp(drift*del_t + sigma*norm_sample[(4*tid+3)*height+j]);
+//	    S[(4*tid  )*height+j] = temp  = temp *exp(drift*del_t + sigma*norm_sample[(4*tid  )*height+j]);
+  	    S[(4*tid  )*height+j] = temp  = temp *exp(drift*del_t + sigma*curand_normal(&localState));
+
+    }
+    #pragma unroll
+    for (int j = 1; j < height; j++ )
+    {
+	    //S[(4*tid+1)*height+j] = temp = temp*exp(drift*del_t + sigma*norm_sample[(4*tid+1)*height+j]);
+   	    S[(4*tid+1)*height+j] = temp = temp*exp(drift*del_t + sigma*curand_normal(&localState));
+   	}
+    #pragma unroll
+    for (int j = 1; j < height; j++ )
+    {
+	    //S[(4*tid+2)*height+j] = temp = temp*exp(drift*del_t + sigma*norm_sample[(4*tid+2)*height+j]);
+    	S[(4*tid+2)*height+j] = temp = temp*exp(drift*del_t + sigma*curand_normal(&localState));
+    }
+    #pragma unroll
+    for (int j = 1; j < height; j++ )
+    {
+	    //S[(4*tid+3)*height+j] = temp = temp*exp(drift*del_t + sigma*norm_sample[(4*tid+3)*height+j]);
+    	S[(4*tid+3)*height+j] = temp = temp*exp(drift*del_t + sigma*curand_normal(&localState));
     }
     
     int expiry_index = height-1;
@@ -192,6 +217,50 @@ static __global__ void generate_asset_price_paths_and_cash_flow_multiple_paths(f
 
 }
 
+static __global__ void find_optimal_exercise_boundary_gpu_multiple_paths(float *S, float *cash_flow, float *option_value, int width, int height, InputData indata, float *x, float *h, int *optimal_exercise_boundary, float *cash_flow_am) {
+    int tid = blockDim.x * blockIdx.x + threadIdx.x;
+
+    int expiry_index = height-1;
+
+    float del_t = indata.expiry_time/(height-1)/365;
+  
+    // discount for merican counterpart
+    float discount = exp(-1*indata.discount_rate*del_t );
+
+    float put_value = 0;
+	
+	optimal_exercise_boundary[tid] = expiry_index;
+	float xtemp = 0;
+	float htemp = 0;
+	
+    // for all other times when the option can be exercised, we comapre the
+    // value of exercising and continuation value to find optimal exercise boundary  
+    for ( int time = expiry_index-1; time >= 1; time-- ) // move back in time
+    {
+
+        // find in the money paths
+        put_value = fmaxf( indata.strike_price - S[tid*height+time], 0.0); //put
+
+        xtemp = S[tid*height+time];
+        cash_flow[tid] = put_value;
+
+        htemp = get_black_scholes_continuation_value_gpu(xtemp, time, width, indata);
+
+        if ( cash_flow[tid] > htemp )
+        {
+            optimal_exercise_boundary[tid] = time;
+            cash_flow_am[tid] = fmaxf(indata.strike_price - S[tid*height+time], 0.0);
+        }
+
+    }
+	
+	
+    cash_flow_am[tid] = fmaxf(indata.strike_price - S[tid*height+optimal_exercise_boundary[tid]], 0.0); 
+    discount = exp(-1*indata.discount_rate*optimal_exercise_boundary[tid]*del_t );
+    option_value[tid] = cash_flow_am[tid]*discount;//*/ 
+
+}
+
 void checkError(cudaError_t err) {
 
     if (err != cudaSuccess) {
@@ -205,7 +274,6 @@ void checkError(cudaError_t err) {
 extern "C" void generate_and_find_exercise_boundary()
 {
 	printf( "\nGPU COMPUTATION\n=============================\n");
-	
     InputData h_indata;
     // read the input file for options relating to the number of paths, number
     // of discrete time-steps etc. 
@@ -223,7 +291,7 @@ extern "C" void generate_and_find_exercise_boundary()
     float *d_cash_flow = NULL;
     float *d_option_value = NULL;
     float *d_cash_flow_am = NULL;
-    
+    curandState *d_states = NULL;
     
     int *d_optimal_exercise_boundary = NULL;
     /*float *h_S = NULL;
@@ -246,12 +314,12 @@ extern "C" void generate_and_find_exercise_boundary()
     h_cash_flow_am = (float*) malloc(sizeof(float)*width);
     h_optimal_exercise_boundary = (int*) malloc(sizeof(int)*width);*/
 
-	cudaEvent_t start, stop;
+ 	cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     cudaEventRecord(start,0);
-	
-	cudaEvent_t startt, stopt;
+    
+    cudaEvent_t startt, stopt;
     cudaEventCreate(&startt);
     cudaEventCreate(&stopt);
     cudaEventRecord(startt,0);
@@ -263,6 +331,7 @@ extern "C" void generate_and_find_exercise_boundary()
     checkError(cudaMalloc((void**)&d_option_value, width*sizeof(float)));
     checkError(cudaMalloc((void**)&d_cash_flow_am, width*sizeof(float)));
     checkError(cudaMalloc((void**)&d_optimal_exercise_boundary, width*sizeof(int)));
+	checkError(cudaMalloc((void**)&d_states, width*sizeof(curandState)));
 	
 	cudaEventRecord(stopt,0);
     cudaEventSynchronize(stopt);
@@ -274,12 +343,12 @@ extern "C" void generate_and_find_exercise_boundary()
 
     //printf("blocksergrdi=%d\n", blocksPerGrid);
     //printf("threadsperblock=%d\n", threadsPerBlock);
-    random_normal normrnd;
-    normrnd.zigset(h_indata.random_seed);
+    //random_normal normrnd;
+    //normrnd.zigset(h_indata.random_seed);
 
-    
+   
 
-	size_t size_norm = width*height*sizeof(float);
+	/*size_t size_norm = width*height*sizeof(float);
     float *h_norm_sample = (float *) malloc(size_norm);
 
     for (int i = 0; i < width; i++) {
@@ -294,7 +363,7 @@ extern "C" void generate_and_find_exercise_boundary()
     checkError(cudaMalloc((void**)&d_norm_sample, size_norm));
 
     checkError(cudaMemcpy(d_norm_sample, h_norm_sample, size_norm, cudaMemcpyHostToDevice));
-	
+	*/
     cudaPrintfInit();
 	
 	cudaEvent_t start2, stop2;
@@ -302,8 +371,10 @@ extern "C" void generate_and_find_exercise_boundary()
     cudaEventCreate(&stop2);
     cudaEventRecord(start2,0);
 	
-    //generate_asset_price_paths_and_cash_flow<<<blocksPerGrid,threadsPerBlock>>>(d_S, d_cash_flow, d_option_value, width, height, h_indata, d_norm_sample);
-    generate_asset_price_paths_and_cash_flow_multiple_paths<<<blocksPerGrid/4,threadsPerBlock>>>(d_S, d_cash_flow, d_option_value, width, height, h_indata, d_norm_sample);     
+    
+    generate_states<<<blocksPerGrid/4,threadsPerBlock>>>(h_indata.random_seed, d_states);
+    //generate_asset_price_paths_and_cash_flow<<<blocksPerGrid,threadsPerBlock>>>(d_states, d_S, d_cash_flow, d_option_value, width, height, h_indata);
+    generate_asset_price_paths_and_cash_flow_multiple_paths<<<blocksPerGrid/4,threadsPerBlock>>>(d_states, d_S, d_cash_flow, d_option_value, width, height, h_indata);     
 	
 	cudaEventRecord(stop2,0);
     cudaEventSynchronize(stop2);
