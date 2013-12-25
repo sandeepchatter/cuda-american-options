@@ -1,5 +1,5 @@
 * number of Monte Carlo paths for the stock
-num_paths = 131072
+num_paths = 1048576
 
 * number of discrete time steps where the american
 * option can be exercised 

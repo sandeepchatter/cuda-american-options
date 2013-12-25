@@ -171,7 +171,8 @@ void stock_simulation::find_optimal_exercise_boundary()
 	
 	// for all other times when the option can be exercised, we comapre the
 	// value of exercising and continuation value to find optimal exercise boundary  
-	for ( int time = expiry_index-1; time >= 1; time-- ) // move back in time
+	//for ( int time = expiry_index-1; time >= 1; time-- ) // move back in time
+	for ( int time = 1; time <= expiry_index-1; time++ ) // move fwd in time
 	{
 		x.clear(); y.clear();
 		imp_indices.clear();
@@ -209,8 +210,11 @@ void stock_simulation::find_optimal_exercise_boundary()
 		{
 			if ( cash_flow[imp_indices[i]] > h[i] )
 			{
-				optimal_exercise_boundary[ imp_indices[i] ] = time;
-				cash_flow_am[imp_indices[i]] = fmaxf(strike_price - S[imp_indices[i]][ time ], 0.0);
+				if ( optimal_exercise_boundary[ imp_indices[i] ] > time )
+				{
+					optimal_exercise_boundary[ imp_indices[i] ] = time;
+					cash_flow_am[imp_indices[i]] = fmaxf(strike_price - S[imp_indices[i]][ time ], 0.0);
+				}
 			}
 		}
 

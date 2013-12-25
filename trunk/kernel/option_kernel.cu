@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -30,8 +29,8 @@ __device__ float phi(float x) {
     return 0.5*(1 + erf(x/sqrtf(2)));
 }
 
-__device__ float get_black_scholes_continuation_value_gpu(float x, float time, int width, InputData indata ) {
-    float del_t = indata.expiry_time/(width-1)/365;
+__device__ float get_black_scholes_continuation_value_gpu(float x, float time, int height, InputData indata ) {
+    float del_t = indata.expiry_time/(height-1)/365;
     float t = time*del_t;
 //    int tid = blockDim.x * blockIdx.x + threadIdx.x;
 
@@ -48,16 +47,192 @@ __device__ float get_black_scholes_continuation_value_gpu(float x, float time, i
     //printf("d1: %g, d2: %g, den: %g, phi(-1*d2): %g, phi(-1*d1): %g, h[i]: %g, x[i]: %g\n", d1, d2, den, phi(-1*d2), phi(-1*d1), h[i], x[i]);
 }
 
-static __global__ void generate_states(float seed, curandState *state) {
-    int tid = blockDim.x * blockIdx.x + threadIdx.x;
-    curand_init(seed, tid, 0, &state[tid]);
-    
+static __global__ void generate_asset_price_paths_and_cash_flow_reg(float *option_value_eu, float *option_value_am, int width, int height, InputData indata, float *norm_sample) {
+	int bid = blockIdx.x;
+	int tid = threadIdx.x;
+	int pathid = blockDim.x * blockIdx.x + threadIdx.x;
+
+	
+	int ts_am = height-1;
+	int oeb = ts_am;		// optimal_exercise_boundary for this path
+	float cf_am = 0;		// cash flow of american option for this path
+	
+	// the following should be single read and broadcast for all threads I hope
+	float spot_price = indata.S_0;
+	float strike_price = indata.strike_price;
+	float expiry_time = indata.expiry_time;
+	float discount_rate = indata.discount_rate;
+	float volatility = indata.volatility;
+	
+	//if ( pathid == 256  )
+	//		cuPrintf ("\nAt t=0, spot_price = %g, strike_price = %g\n", spot_price, strike_price);
+			
+	// for decicing optimal exercise boundary in american options
+	float put_value = 0;
+	float h = 0;
+	float time = 0;
+	float d1, d2, den, ttm;
+	
+	// assuming uniformaly distributed option exercise times
+	float drift = discount_rate - indata.dividend - 0.5*pow(volatility,2);
+    float del_t = expiry_time/ts_am/365;
+    float sigma = sqrt(del_t)*volatility; 
+	
+	int k = 0;
+	int nt = blockDim.x;
+	int start_index = bid*nt*ts_am;
+
+	// 19 float/int register variables so far
+	
+	while ( k < ts_am ) 
+	{
+		// NOTE: (k < oeb) should be a good stopping criteria, stop computation as soon as
+		// you exercise, but can lead to highly divergent code paths.  
+		
+		int index = start_index + k*nt + tid;
+		spot_price = spot_price*exp(drift*del_t + sigma*norm_sample[index]);
+		
+		//if (index > width*height)
+		//	cuPrintf ("index = %d for start_index = %d, k = %d, nt = %d, tid= %d\n", index, start_index, k, nt, tid );
+		
+		put_value = fmaxf( strike_price - spot_price, 0.0); //put
+		
+		//=======================Black-scholes continuation value========================//
+		int kt = k+1;
+		time = kt*del_t; 			// is the current time
+		
+		//if ( pathid == 256 )
+		//	cuPrintf ("At t = %g, put value = %g; spot_price = %g, strike_price = %g, index = %d and normrand = %g\n",
+		//	time, put_value, spot_price, strike_price, index, norm_sample[index]);
+		
+		ttm = (expiry_time - time)/365;
+		d1 = log(spot_price/strike_price) + ( discount_rate + 0.5*volatility*volatility )*ttm;
+		d2 = log(spot_price/strike_price) + ( discount_rate - 0.5*volatility*volatility )*ttm;
+		den = volatility*sqrtf( ttm );
+		d1 = d1/den;
+		d2 = d2/den;
+
+		h = strike_price*exp(-1*discount_rate*ttm)*phi(-1*d2) - spot_price*phi(-1*d1);
+		//===============================================================================//
+		if ( oeb > kt & put_value > h )
+		{
+		    oeb = kt;
+		    cf_am = fmaxf( strike_price - spot_price, 0.0);
+		}
+		
+		k++;
+		//if ( pathid == 0 )
+		//	cuPrintf ("----------------------\n");
+	}
+	
+	
+    option_value_eu[ pathid ] = put_value*exp(-1*discount_rate*expiry_time/365 );
+	option_value_am[ pathid ] = cf_am*exp(-1*discount_rate*oeb*del_t ); 
+	
 }
 
-static __global__ void generate_asset_price_paths_and_cash_flow(curandState *states, float *S, float *cash_flow, float *option_value, int width, int height, InputData indata) {
+// incomplete
+static __global__ void generate_asset_price_paths_and_cash_flow_reg_mp(float *option_value_eu, float *option_value_am, int width, int height, InputData indata, float *norm_sample)
+{
+	int bid = blockIdx.x;
+	int tid = threadIdx.x;
+
+	int ts_am = height-1;
+	
+	// the following should be single read and broadcast for all threads I hope
+	float spot_price = indata.S_0;
+	float strike_price = indata.strike_price;
+	float expiry_time = indata.expiry_time;
+	float discount_rate = indata.discount_rate;
+	float volatility = indata.volatility;
+	
+	//if ( pathid == 256  )
+	//		cuPrintf ("\nAt t=0, spot_price = %g, strike_price = %g\n", spot_price, strike_price);
+			
+	// for decicing optimal exercise boundary in american options
+	float put_value = 0;
+	float h = 0;
+	float time = 0;
+	float d1, d2, den, ttm;
+	
+	// assuming uniformaly distributed option exercise times
+	float drift = discount_rate - indata.dividend - 0.5*pow(volatility,2);
+    float del_t = expiry_time/ts_am/365;
+    float sigma = sqrt(del_t)*volatility; 
+	
+	int m = 1;
+	int nt = blockDim.x;
+	int start_index = 4*bid*nt*ts_am;
+	int pathid = 4*blockDim.x * blockIdx.x + threadIdx.x;
+	
+	
+	// 19 float/int register variables so far
+	while( m <= 4)
+	{
+		int oeb = ts_am;		// optimal_exercise_boundary for this path
+		float cf_am = 0;		// cash flow of american option for this path
+		
+		int k = 0;
+
+		while ( k < ts_am ) 
+		{
+			// NOTE: (k < oeb) should be a good stopping criteria, stop computation as soon as
+			// you exercise, but can lead to highly divergent code paths.  
+		
+			int index = start_index + k*nt + tid;
+			spot_price = spot_price*exp(drift*del_t + sigma*norm_sample[index]);
+		
+			//if (pathid == 100000)
+			//	cuPrintf ("pathid = %d for start_index = %d, k = %d, nt = %d, tid= %d, m = %d\n", pathid, start_index, k, nt, tid, m );
+		
+			put_value = fmaxf( strike_price - spot_price, 0.0); //put
+		
+			//=======================Black-scholes continuation value========================//
+			int kt = k+1;
+			time = kt*del_t; 			// is the current time
+		
+			//if ( tid == 0 || tid == 255)
+			//	cuPrintf ("At t = %g, put value = %g; spot_price = %g, strike_price = %g, index = %d and normrand = %g\n",
+			//	time, put_value, spot_price, strike_price, index, norm_sample[index]);
+		
+			ttm = (expiry_time - time)/365;
+			d1 = log(spot_price/strike_price) + ( discount_rate + 0.5*volatility*volatility )*ttm;
+			d2 = log(spot_price/strike_price) + ( discount_rate - 0.5*volatility*volatility )*ttm;
+			den = volatility*sqrtf( ttm );
+			d1 = d1/den;
+			d2 = d2/den;
+
+			h = strike_price*exp(-1*discount_rate*ttm)*phi(-1*d2) - spot_price*phi(-1*d1);
+			//===============================================================================//
+			if ( oeb > kt & put_value > h )
+			{
+				oeb = kt;
+				cf_am = fmaxf( strike_price - spot_price, 0.0);
+			}
+		
+			k++;
+		}
+		
+		
+		//if ( tid == 0 )
+		//	cuPrintf ("----------------------\n");
+		m++;
+		
+		option_value_eu[ pathid ] = put_value*exp(-1*discount_rate*expiry_time/365 );
+		option_value_am[ pathid ] = cf_am*exp(-1*discount_rate*oeb*del_t ); 
+		
+		start_index = start_index + nt*ts_am;
+		pathid = pathid + nt;
+	}
+	
+    
+	
+}
+
+static __global__ void generate_asset_price_paths_and_cash_flow(float *S, float *cash_flow, float *option_value, int width, int height, InputData indata, float *norm_sample) {
 
     int tid = blockDim.x * blockIdx.x + threadIdx.x;
-    curandState localState = states[tid];
+
     //InputData indata = inputdata;
     // shared memory to make sure accesses are fast (not sure if no use of tid affects things)
 
@@ -72,8 +247,7 @@ static __global__ void generate_asset_price_paths_and_cash_flow(curandState *sta
     float temp = indata.S_0;
     for (int j = 1; j < height; j++ )
     {
-//	    S[tid*height+j] = temp = temp*exp(drift*del_t + sigma*norm_sample[tid*height+j]);
-	    S[tid*height+j] = temp = temp*exp(drift*del_t + sigma*curand_normal(&localState));
+	    S[tid*height+j] = temp = temp*exp(drift*del_t + sigma*norm_sample[tid*height+j]);
     }
     
     int expiry_index = height-1;
@@ -108,58 +282,29 @@ static __global__ void find_optimal_exercise_boundary_gpu(float *S, float *cash_
     // value of exercising and continuation value to find optimal exercise boundary  
     for ( int time = expiry_index-1; time >= 1; time-- ) // move back in time
     {
-
-        // find in the money paths
         put_value = fmaxf( indata.strike_price - S[tid*height+time], 0.0); //put
 
-        //if ( put_value > 0 )
-        //{
-            //x[tid] = xtemp = S[tid*height+time];
-            xtemp = S[tid*height+time];
-            //y[tid] =  cash_flow_am[tid]*exp(-1*discount_rate*del_t*(optimal_exercise_boundary[tid]-time) ) ;
-            //imp_indices[tid] = path;
-        //} else {
-         //   x[tid] = -1;
-            //y[tid] = -1;
-        //}
+        xtemp = S[tid*height+time];
         cash_flow[tid] = put_value;
 
-        //__syncthreads();
-
-        /********* USING LSM as boundary ************/
-        //vector<float> g;
-        //least_squares.find_linear_fit( x, y, g, num_laguerre_poly);
-        //get_continuation_value_ch( g, h, x );
-
-        /*float norm = 0;
-          for( int z = 0; z < h.size(); z++ )
-          {
-          norm = norm + fabs(y[z] - h[z]);
-          }
-          printf("\ntime: %gd, error-norm: %.3g, avg-error: %.3g", time*del_t*365, norm, norm/h.size());*/
-
-        /********* USING BSE as boundary ************/
-        //if (tid == 0)
-        htemp = get_black_scholes_continuation_value_gpu(xtemp, time, width, indata);
+        htemp = get_black_scholes_continuation_value_gpu(xtemp, time, height, indata);
 
         if ( cash_flow[tid] > htemp )
         {
             optimal_exercise_boundary[tid] = time;
             cash_flow_am[tid] = fmaxf(indata.strike_price - S[tid*height+time], 0.0);
         }
-
-        //__syncthreads();
     }
 	
 	
-    cash_flow_am[tid] = fmaxf(indata.strike_price - S[tid*height+optimal_exercise_boundary[tid]], 0.0); 
+    //cash_flow_am[tid] = fmaxf(indata.strike_price - S[tid*height+optimal_exercise_boundary[tid]], 0.0); 
     //cash_flow_am[tid] = 0;
     discount = exp(-1*indata.discount_rate*optimal_exercise_boundary[tid]*del_t );
     option_value[tid] = cash_flow_am[tid]*discount;//*/ 
 
 }
 
-static __global__ void generate_asset_price_paths_and_cash_flow_multiple_paths(curandState *states, float *S, float *cash_flow, float *option_value, int width, int height, InputData indata) {
+static __global__ void generate_asset_price_paths_and_cash_flow_multiple_paths(float *S, float *cash_flow, float *option_value, int width, int height, InputData indata, float *norm_sample) {
 
     int tid = blockDim.x * blockIdx.x + threadIdx.x;
 
@@ -168,34 +313,15 @@ static __global__ void generate_asset_price_paths_and_cash_flow_multiple_paths(c
     float sigma = sqrt(del_t)*indata.volatility;
     S[tid*height] = indata.S_0;
     float temp  = indata.S_0;
-    //float temp1 = temp;
-    //float temp2 = temp;
-    //float temp3 = temp;
-    curandState localState = states[tid];
-    #pragma unroll
+    float temp1 = temp;
+    float temp2 = temp;
+    float temp3 = temp;
     for (int j = 1; j < height; j++ )
     {
-//	    S[(4*tid  )*height+j] = temp  = temp *exp(drift*del_t + sigma*norm_sample[(4*tid  )*height+j]);
-  	    S[(4*tid  )*height+j] = temp  = temp *exp(drift*del_t + sigma*curand_normal(&localState));
-
-    }
-    #pragma unroll
-    for (int j = 1; j < height; j++ )
-    {
-	    //S[(4*tid+1)*height+j] = temp = temp*exp(drift*del_t + sigma*norm_sample[(4*tid+1)*height+j]);
-   	    S[(4*tid+1)*height+j] = temp = temp*exp(drift*del_t + sigma*curand_normal(&localState));
-   	}
-    #pragma unroll
-    for (int j = 1; j < height; j++ )
-    {
-	    //S[(4*tid+2)*height+j] = temp = temp*exp(drift*del_t + sigma*norm_sample[(4*tid+2)*height+j]);
-    	S[(4*tid+2)*height+j] = temp = temp*exp(drift*del_t + sigma*curand_normal(&localState));
-    }
-    #pragma unroll
-    for (int j = 1; j < height; j++ )
-    {
-	    //S[(4*tid+3)*height+j] = temp = temp*exp(drift*del_t + sigma*norm_sample[(4*tid+3)*height+j]);
-    	S[(4*tid+3)*height+j] = temp = temp*exp(drift*del_t + sigma*curand_normal(&localState));
+	    S[(4*tid  )*height+j] = temp  = temp *exp(drift*del_t + sigma*norm_sample[(4*tid  )*height+j]);
+	    S[(4*tid+1)*height+j] = temp1 = temp1*exp(drift*del_t + sigma*norm_sample[(4*tid+1)*height+j]);
+	    S[(4*tid+2)*height+j] = temp2 = temp2*exp(drift*del_t + sigma*norm_sample[(4*tid+2)*height+j]);
+	    S[(4*tid+3)*height+j] = temp3 = temp3*exp(drift*del_t + sigma*norm_sample[(4*tid+3)*height+j]);
     }
     
     int expiry_index = height-1;
@@ -217,50 +343,6 @@ static __global__ void generate_asset_price_paths_and_cash_flow_multiple_paths(c
 
 }
 
-static __global__ void find_optimal_exercise_boundary_gpu_multiple_paths(float *S, float *cash_flow, float *option_value, int width, int height, InputData indata, float *x, float *h, int *optimal_exercise_boundary, float *cash_flow_am) {
-    int tid = blockDim.x * blockIdx.x + threadIdx.x;
-
-    int expiry_index = height-1;
-
-    float del_t = indata.expiry_time/(height-1)/365;
-  
-    // discount for merican counterpart
-    float discount = exp(-1*indata.discount_rate*del_t );
-
-    float put_value = 0;
-	
-	optimal_exercise_boundary[tid] = expiry_index;
-	float xtemp = 0;
-	float htemp = 0;
-	
-    // for all other times when the option can be exercised, we comapre the
-    // value of exercising and continuation value to find optimal exercise boundary  
-    for ( int time = expiry_index-1; time >= 1; time-- ) // move back in time
-    {
-
-        // find in the money paths
-        put_value = fmaxf( indata.strike_price - S[tid*height+time], 0.0); //put
-
-        xtemp = S[tid*height+time];
-        cash_flow[tid] = put_value;
-
-        htemp = get_black_scholes_continuation_value_gpu(xtemp, time, width, indata);
-
-        if ( cash_flow[tid] > htemp )
-        {
-            optimal_exercise_boundary[tid] = time;
-            cash_flow_am[tid] = fmaxf(indata.strike_price - S[tid*height+time], 0.0);
-        }
-
-    }
-	
-	
-    cash_flow_am[tid] = fmaxf(indata.strike_price - S[tid*height+optimal_exercise_boundary[tid]], 0.0); 
-    discount = exp(-1*indata.discount_rate*optimal_exercise_boundary[tid]*del_t );
-    option_value[tid] = cash_flow_am[tid]*discount;//*/ 
-
-}
-
 void checkError(cudaError_t err) {
 
     if (err != cudaSuccess) {
@@ -274,6 +356,7 @@ void checkError(cudaError_t err) {
 extern "C" void generate_and_find_exercise_boundary()
 {
 	printf( "\nGPU COMPUTATION\n=============================\n");
+	
     InputData h_indata;
     // read the input file for options relating to the number of paths, number
     // of discrete time-steps etc. 
@@ -290,36 +373,22 @@ extern "C" void generate_and_find_exercise_boundary()
     float *d_h = NULL;
     float *d_cash_flow = NULL;
     float *d_option_value = NULL;
+    float *d_option_value_am = NULL;
     float *d_cash_flow_am = NULL;
-    curandState *d_states = NULL;
     
     int *d_optimal_exercise_boundary = NULL;
-    /*float *h_S = NULL;
-    float *h_x = NULL;
-    float *h_h = NULL;
-    float *h_cash_flow = NULL;
-    float *h_option_value = NULL;
-    float *h_cash_flow_am = NULL;
-    int *h_optimal_exercise_boundary = NULL;*/
+    
     int width = num_paths;
     int height = h_indata.num_time_steps+1;
     //size_t size = num_paths*(h_indata.num_time_steps+1)*sizeof(float);
     //printf("width=%d\n", width);
 
-    /*h_S = (float*) malloc(sizeof(float)*width*height);
-    h_x = (float*) malloc(sizeof(float)*width);
-    h_h = (float*) malloc(sizeof(float)*width);
-    h_cash_flow = (float*) malloc(sizeof(float)*width);
-    h_option_value = (float*) malloc(sizeof(float)*width);
-    h_cash_flow_am = (float*) malloc(sizeof(float)*width);
-    h_optimal_exercise_boundary = (int*) malloc(sizeof(int)*width);*/
-
- 	cudaEvent_t start, stop;
+	cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     cudaEventRecord(start,0);
-    
-    cudaEvent_t startt, stopt;
+	
+	cudaEvent_t startt, stopt;
     cudaEventCreate(&startt);
     cudaEventCreate(&stopt);
     cudaEventRecord(startt,0);
@@ -329,9 +398,9 @@ extern "C" void generate_and_find_exercise_boundary()
     checkError(cudaMalloc((void**)&d_h, width*sizeof(float)));
     checkError(cudaMalloc((void**)&d_cash_flow, width*sizeof(float)));
     checkError(cudaMalloc((void**)&d_option_value, width*sizeof(float)));
+    checkError(cudaMalloc((void**)&d_option_value_am, width*sizeof(float)));
     checkError(cudaMalloc((void**)&d_cash_flow_am, width*sizeof(float)));
     checkError(cudaMalloc((void**)&d_optimal_exercise_boundary, width*sizeof(int)));
-	checkError(cudaMalloc((void**)&d_states, width*sizeof(curandState)));
 	
 	cudaEventRecord(stopt,0);
     cudaEventSynchronize(stopt);
@@ -339,42 +408,48 @@ extern "C" void generate_and_find_exercise_boundary()
 	printf("\n### GPU: Time to cudamalloc: %fs\n", GPU_t/1000);
 	
     int threadsPerBlock = 256;
-    int blocksPerGrid = width/threadsPerBlock;
+    int blocksPerGrid = (int)ceil( 0.25*width/threadsPerBlock);
 
-    //printf("blocksergrdi=%d\n", blocksPerGrid);
-    //printf("threadsperblock=%d\n", threadsPerBlock);
-    //random_normal normrnd;
-    //normrnd.zigset(h_indata.random_seed);
+    printf("	- Blocks per Grid = %d\n", blocksPerGrid);
+    printf("	- Threads per Block = %d\n", threadsPerBlock);
+    
+    random_normal normrnd;
+    normrnd.zigset( 78542121 );
 
-   
-
-	/*size_t size_norm = width*height*sizeof(float);
+	size_t size_norm = width*height*sizeof(float);
     float *h_norm_sample = (float *) malloc(size_norm);
 
-    for (int i = 0; i < width; i++) {
+    /*for (int i = 0; i < width; i++) {
         for (int j = 0; j < height; j++) {    
             h_norm_sample[i*height+j] = normrnd.RNOR();
             //printf("h = %f\n", h_norm_sample[i*height+j]);
         }
+    }*/
+    
+    for (int j = 0; j < height; j++) {
+    	for (int i = 0; i < width; i++) {    
+            h_norm_sample[j*width + i] = normrnd.RNOR();
+            //printf("h = %f\n", h_norm_sample[i*height+j]);
+        }
     }
-
+	printf("	- size of d_norm_sample: %d\n", size_norm/4);
+	
     float *d_norm_sample = NULL;
 
     checkError(cudaMalloc((void**)&d_norm_sample, size_norm));
 
     checkError(cudaMemcpy(d_norm_sample, h_norm_sample, size_norm, cudaMemcpyHostToDevice));
-	*/
+	
     cudaPrintfInit();
 	
 	cudaEvent_t start2, stop2;
     cudaEventCreate(&start2);
     cudaEventCreate(&stop2);
     cudaEventRecord(start2,0);
-	
-    
-    generate_states<<<blocksPerGrid/4,threadsPerBlock>>>(h_indata.random_seed, d_states);
-    //generate_asset_price_paths_and_cash_flow<<<blocksPerGrid,threadsPerBlock>>>(d_states, d_S, d_cash_flow, d_option_value, width, height, h_indata);
-    generate_asset_price_paths_and_cash_flow_multiple_paths<<<blocksPerGrid/4,threadsPerBlock>>>(d_states, d_S, d_cash_flow, d_option_value, width, height, h_indata);     
+    //generate_asset_price_paths_and_cash_flow_reg<<<blocksPerGrid,threadsPerBlock>>>(d_option_value, d_option_value_am, width, height, h_indata, d_norm_sample);
+    generate_asset_price_paths_and_cash_flow_reg_mp<<<blocksPerGrid,threadsPerBlock>>>(d_option_value, d_option_value_am, width, height, h_indata, d_norm_sample);
+    //generate_asset_price_paths_and_cash_flow<<<blocksPerGrid,threadsPerBlock>>>(d_S, d_cash_flow, d_option_value, width, height, h_indata, d_norm_sample);
+    //generate_asset_price_paths_and_cash_flow_multiple_paths<<<blocksPerGrid/4,threadsPerBlock>>>(d_S, d_cash_flow, d_option_value, width, height, h_indata, d_norm_sample);     
 	
 	cudaEventRecord(stop2,0);
     cudaEventSynchronize(stop2);
@@ -395,15 +470,17 @@ extern "C" void generate_and_find_exercise_boundary()
     cudaEventCreate(&stop3);
     cudaEventRecord(start3,0);
     
-    find_optimal_exercise_boundary_gpu<<<blocksPerGrid, threadsPerBlock>>>(d_S, d_cash_flow, d_option_value, width, height, h_indata, d_x, d_h, d_optimal_exercise_boundary, d_cash_flow_am);
+    //find_optimal_exercise_boundary_gpu<<<blocksPerGrid, threadsPerBlock>>>(d_S, d_cash_flow, d_option_value, width, height, h_indata, d_x, d_h, d_optimal_exercise_boundary, d_cash_flow_am);
 
 	cudaEventRecord(stop3,0);
     cudaEventSynchronize(stop3);
     cudaEventElapsedTime(&GPU_t, start3, stop3);
 	printf("\n### Time to generate optimal exercise boundary: %fs\n", GPU_t/1000);
 	
-    float sum_a = thrust::reduce(dev_option_value_b, dev_option_value_e, (float)0, thrust::plus<float>());
-    float var_am = thrust::transform_reduce(dev_option_value_b, dev_option_value_e, square<float>(), (float)0, thrust::plus<float>());
+	thrust::device_ptr<float> dev_option_value_am_b(d_option_value_am);
+    thrust::device_ptr<float> dev_option_value_am_e = dev_option_value_am_b + width;
+    float sum_a = thrust::reduce(dev_option_value_am_b, dev_option_value_am_e, (float)0, thrust::plus<float>());
+    float var_am = thrust::transform_reduce(dev_option_value_am_b, dev_option_value_am_e, square<float>(), (float)0, thrust::plus<float>());
     float american_option_value  = sum_a/width;
     var_am = (var_am - pow(american_option_value, 2) )/width;
 
@@ -465,16 +542,4 @@ extern "C" void generate_and_find_exercise_boundary()
     checkError(cudaFree(d_option_value));
     checkError(cudaFree(d_cash_flow_am));
     checkError(cudaFree(d_optimal_exercise_boundary));
-
-    /*free(h_S);
-    free(h_x);
-    free(h_h);
-    free(h_cash_flow);
-    free(h_option_value);
-    free(h_cash_flow_am);
-    free(h_optimal_exercise_boundary);*/
-
 }
-
-
-
