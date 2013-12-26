@@ -10,12 +10,13 @@
 #include "../util/MonteCarlo_structs.h"
 //#include "../util/regress/regress_CPU.h"
 
+
+
 using namespace std;
 
-extern "C" void _gpu_find_option_values_using_normrand();
-extern "C" void _gpu_find_option_values_using_curand();
-extern "C" void _gpu_find_option_values_using_normrand_v2();
-extern "C" void _gpu_find_option_values_using_curand_v2();
-
+extern "C" void _gpu_find_option_values_using_normrand( result_set* r_set );
+extern "C" void _gpu_find_option_values_using_curand( result_set* r_set );
+extern "C" void _gpu_find_option_values_using_normrand_v2( result_set* r_set );
+extern "C" void _gpu_find_option_values_using_curand_v2( result_set* r_set );
 
 #endif

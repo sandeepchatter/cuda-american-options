@@ -9,15 +9,16 @@
 #include "stock_simulation.h"
 #include "../util/regress/regress_CPU.h"
 
-stock_simulation::stock_simulation( )
+stock_simulation::stock_simulation( result_set* _r_set )
 {
-	InputData indata;
+	r_set = _r_set;
 	
 	// read the input file for options relating to the number of paths, number
-	// of discrete time-steps etc. 
+	// of discrete time-steps etc.
+	InputData indata;
 	fileIO.readInputFile((char*)"./input/options.txt", indata);
-	printf( "\nCPU COMPUTATION\n=============================\n");
-	printf( "Num Monte Carlo paths: %d\nNum time-steps: %d \n", indata.num_paths, indata.num_time_steps);
+	
+	indata.print_details(stdout);
 	
 	start_time = get_wall_time();
 	
@@ -27,7 +28,24 @@ stock_simulation::stock_simulation( )
 	volatility = indata.volatility;
 	discount_rate = indata.discount_rate;
 	strike_price = indata.strike_price;
-	num_laguerre_poly = indata.num_laguerre_poly;
+	num_chebyshev_poly = indata.num_chebyshev_poly;
+	
+	if ( indata.num_chebyshev_poly == 0 )
+	{
+		r_set->desc = "CPU:Black-Scholes Results";
+		#ifdef VERBOSE
+		printf( "\nCPU COMPUTATION using Black-Scholes\n=============================\n");
+		#endif
+		use_LSM_as_continuation = 0;
+	}
+	else
+	{
+		r_set->desc = "CPU:Least-Squares Results";
+		#ifdef VERBOSE
+		printf( "\nCPU COMPUTATION using Least-Squares\n=============================\n");
+		#endif
+		use_LSM_as_continuation = 1;
+	}
 	
 	// allocate memory to store all Monte Carlo paths, and intialize
 	// the initial value of the asset at t=0.
@@ -47,19 +65,7 @@ stock_simulation::stock_simulation( )
 		fileIO.prepare_log_buffer();
 		
 		// write the input parameters
-		fprintf(fileIO.log_file, "\nSETTINGS FOR SIMULATION\n-------------------------------\n\n");
-		fprintf(fileIO.log_file, "%40s:   %d \n", "Number of Monte Carlo Paths", indata.num_paths);
-		fprintf(fileIO.log_file, "%40s:   %d \n", "Number of time-steps for each path", indata.num_time_steps );
-		fprintf(fileIO.log_file, "%40s:   %d \n", "Random seed used", indata.random_seed );
-		fprintf(fileIO.log_file, "%40s:   %d \n", "Number of Laguerre polynomials used", indata.num_laguerre_poly );
-		
-		fprintf(fileIO.log_file, "\nPROPERTIES OF THE OPTION\n-------------------------------\n\n");
-		fprintf(fileIO.log_file, "%40s:   %.3f \n", "The risk free rate of return", indata.discount_rate);
-		fprintf(fileIO.log_file, "%40s:   %.3f \n", "Dividend on the underlying asset", indata.num_time_steps );
-		fprintf(fileIO.log_file, "%40s:   %.3f \n", "Expiry time of the option (in days)", indata.expiry_time );
-		fprintf(fileIO.log_file, "%40s:   %.3f \n", "Strike Price", indata.strike_price );
-		fprintf(fileIO.log_file, "%40s:   %.3f \n", "Volatility on the underlying asset", indata.volatility);
-		fprintf(fileIO.log_file, "%40s:   %.3f \n", "The price of the asset at t=0", indata.S_0 );
+		indata.print_details(fileIO.log_buffer);
 	#endif
 }
 
@@ -191,26 +197,26 @@ void stock_simulation::find_optimal_exercise_boundary()
 			cash_flow[path] = put_value;
 		}
 		
-		/********* USING LSM as boundary ***********
-		vector<float> g;
-		least_squares.find_linear_fit( x, y, g, num_laguerre_poly);
-		get_continuation_value_ch( g, h, x );*/
-		
-		/*float norm = 0;
-		for( int z = 0; z < h.size(); z++ )
+		if (use_LSM_as_continuation)
 		{
-			norm = norm + fabs(y[z] - h[z]);
+			vector<float> g;
+			least_squares.find_linear_fit( x, y, g, num_chebyshev_poly);
+			get_continuation_value_ch( g, h, x );
+			/*float norm = 0;
+			for( int z = 0; z < h.size(); z++ )
+			{
+				norm = norm + fabs(y[z] - h[z]);
+			}
+			printf("\ntime: %gd, error-norm: %.3g, avg-error: %.3g", time*del_t*365, norm, norm/h.size());*/
 		}
-		printf("\ntime: %gd, error-norm: %.3g, avg-error: %.3g", time*del_t*365, norm, norm/h.size());*/
-		
-		/********* USING BSE as boundary ************/
-		get_black_scholes_continuation_value( x, time, h);
+		else
+			get_black_scholes_continuation_value( x, time, h);
 		
 		for ( int i = 0; i < imp_indices.size(); i++ )
 		{
 			if ( cash_flow[imp_indices[i]] > h[i] )
 			{
-				//if ( optimal_exercise_boundary[ imp_indices[i] ] > time )
+				//if ( optimal_exercise_boundary[ imp_indices[i] ] > time ) //uncomment if moving fwd in time
 				//{
 					optimal_exercise_boundary[ imp_indices[i] ] = time;
 					cash_flow_am[imp_indices[i]] = fmaxf(strike_price - S[imp_indices[i]][ time ], 0.0);
@@ -257,33 +263,40 @@ void stock_simulation::find_optimal_exercise_boundary()
 	american_option_value  = sum/S.size();
 	var_am = (var_am - pow(american_option_value, 2) )/S.size();
 	
-	/*printf("\n\nFINAL RESULTS\n------------------------\n");
-	printf("%7s  %12s  %12s  %12s  %12s  %12s\n", "Path no", "Eu_Cash", "Eu_discount", "Am_Cash", "Excercise_at", "Am_discount");
-	printf("%7s  %12s  %12s  %12s  %12s  %12s\n", "-------", "-------", "-----------", "-------", "------------", "-----------");
-	for ( int i = 0; i < optimal_exercise_boundary.size(); i++ )
-	{
-		printf("%7d  %12.4f  %12.4f  %12.4f  %12.4f  %12.4f\n", i+1, cash_flow_eu[i], discount_eu, cash_flow_am[i],
-		optimal_exercise_boundary[i]*del_t*365, exp(-1*discount_rate*optimal_exercise_boundary[i]*del_t ) );
-	}*/
-	
+	// used closed form black-scholes to calculate european option
 	vector<float> sc; sc.push_back(S[0][0]);
 	vector<float> hc;
 	get_black_scholes_continuation_value( sc, 0, hc);
-	printf("\n\nSUMMARY RESULTS FOR CPU\n--------------------------\n");
+	
+	diff_time = (get_wall_time() - start_time);
+	
+	float delta_am = 1.96*sqrt(var_am/S.size())/american_option_value;
+	float delta_eu = 1.96*sqrt(var_eu/S.size())/european_option_value;
+	
+	r_set->american_option_value = american_option_value;
+	r_set->european_option_value = european_option_value;
+	r_set->std_dev_am = sqrt(var_am);
+	r_set->std_dev_eu = sqrt(var_eu);
+	r_set->max_rel_error_am = 100*delta_am/(1-delta_am);
+	r_set->max_rel_error_eu = 100*delta_eu/(1-delta_eu);
+	
+	#ifdef VERBOSE
+	printf("\n\nSummary for %s\n------------------------\n", (char*)r_set->desc.c_str());
 	printf("  i) American Option:\n");
 	printf("%40s:   %.6f \n", "Valuation at t=0", american_option_value);
-	printf("%40s:   %.6f \n", "Std dev of the samples", sqrt(var_am) );
-	float delta_am = 1.96*sqrt(var_am/S.size())/american_option_value;
-	printf("%40s:   %.3g \% (w.r.t. true mean)\n", "Maximum rel error (95% confidence)", 100*delta_am/(1-delta_am) );
+	printf("%40s:   %.6f \n", "Std dev of the samples", r_set->std_dev_am );
+	printf("%40s:   %.3g \% (w.r.t. true mean)\n", "Maximum rel error (95% confidence)", r_set->max_rel_error_am );
 	printf("\n ii) European Option:\n");
 	printf("%40s:   %.6f \n", "Valuation at t=0 by Black-Scholes", hc[0]);
 	printf("%40s:   %.6f \n", "Valuation at t=0 by Monte-Carlo", european_option_value);
-	printf("%40s:   %.6f \n", "Std dev of the samples", sqrt(var_eu) );
-	float delta_eu = 1.96*sqrt(var_eu/S.size())/european_option_value;
-	printf("%40s:   %.3g \% (w.r.t. true mean)\n", "Maximum rel error (95% confidence)", 100*delta_eu/(1-delta_eu) );
+	printf("%40s:   %.3g \% \n", "Percentage error b/w B-S and MC", 100.0*fabs( hc[0]-european_option_value)/hc[0]);
+	printf("%40s:   %.6f \n", "Std dev of the samples", r_set->std_dev_eu );
+	printf("%40s:   %.3g \% (w.r.t. true mean)\n", "Maximum rel error (95% confidence)", r_set->max_rel_error_eu );
 	printf("\niii) Early Exercise Value: %g\n", american_option_value - european_option_value);
+	#endif
+	
 	#ifdef SAVE_DATA_TO_LOG
-			fprintf(fileIO.log_file, "\n\nFINAL RESULTS\n------------------------\n");
+			fprintf(fileIO.log_file, "\n\nSummary for %s\n------------------------\n", (char*)r_set->desc.c_str());
 			fprintf(fileIO.log_file, "  i) American Option:\n");
 			fprintf(fileIO.log_file, "%40s:   %g \n", "Valuation at t=0", american_option_value);
 			fprintf(fileIO.log_file, "%40s:   %g \n", "Std dev of the samples", sqrt(var_am) );
@@ -358,9 +371,6 @@ float stock_simulation::phi( float x)
 
 void stock_simulation::get_resource_usage( FILE* out)
 {
-	double current_time = get_wall_time();
-	double diff_time = (current_time - start_time);
-
 	struct rusage usage;
 	int who = RUSAGE_SELF;
 	int result = getrusage(who, &usage);
@@ -418,6 +428,11 @@ void stock_simulation::get_resource_usage( FILE* out)
 	double total_cpu_process_time = total_user_cpu_time + total_syst_cpu_time;
 	double num_cores = sysconf( _SC_NPROCESSORS_ONLN );
 	
+	r_set->net_clock_time = total_user_cpu_time + total_syst_cpu_time;
+	r_set->memory_usage = 0.000976562*VmHWM;
+	
+	#ifdef VERBOSE
+	
 	if ( result != -1 )
 	{
 		fprintf(out,"\nRESOURCE USGAE FOR CPU\n-------------------------------\n");	
@@ -447,6 +462,8 @@ void stock_simulation::get_resource_usage( FILE* out)
 	}
 	else
 	 	fprintf(out,"### There was an error retreiving the stats!!!!!\n");
+	
+	#endif
 }
 
 void stock_simulation::line2arr (char* str, vector<string>* arr, char *tokenizer)

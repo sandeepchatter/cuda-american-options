@@ -1,5 +1,5 @@
 * number of Monte Carlo paths for the stock
-num_paths = 16384
+num_paths = 4194304
 
 * number of discrete time steps where the american
 * option can be exercised (let minimum be 10) 
@@ -26,8 +26,11 @@ volatility = 0.2
 *strike price for the underlying asset
 strike_price = 1
 
-* number of terms in Laguerre polynomials
-num_laguerre_poly = 3
+* number of terms in chebyshev polynomials, not used as of now
+* in code, we always use only T0, T1, T2, T3. However, if
+* set to 0, the code automatically uses black-Scholes continuation
+* criteria instead of LSM criteria
+num_chebyshev_poly = 0
 
 * number of paths per thread (only for curand versions)
 * should be powers of 2

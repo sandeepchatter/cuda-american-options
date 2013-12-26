@@ -69,9 +69,9 @@ void FileIO::readInputFile(char *inputFileName, InputData &indata)
 			{
 				indata.strike_price = atof(str_option);
 			}
-			else if (strcmp(param, "num_laguerre_poly") == 0)
+			else if (strcmp(param, "num_chebyshev_poly") == 0)
 			{
-				indata.num_laguerre_poly = atoi(str_option);
+				indata.num_chebyshev_poly = atoi(str_option);
 			}
 			else if (strcmp(param, "num_paths_per_thread") == 0)
 			{

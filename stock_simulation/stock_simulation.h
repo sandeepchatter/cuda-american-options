@@ -53,8 +53,8 @@ class stock_simulation
 	// (http://en.wikipedia.org/wiki/Ziggurat_algorithm)
 	random_normal normrnd;
 	
-	// number of Laguerre polynomials to be used as basis functions
-	int num_laguerre_poly;
+	// number of chebyshev polynomials to be used as basis functions
+	int num_chebyshev_poly;
 	
 	// variables used in functions, representing respectively the drift, the 
 	// time between exercise dates and standard deviation of the underlying 
@@ -82,7 +82,14 @@ class stock_simulation
 	FileIO fileIO;
 	
 	// the start time fot the stock simulation class
-	double start_time;
+	double start_time, diff_time;
+	
+	// a struct to hold the results and resource usga eof PCu computations
+	result_set* r_set;
+	
+	// aboolean variable to determine if LSM is to be used as a continuation
+	// function
+	bool use_LSM_as_continuation;
 	public:
 	
 	/*! \brief Constructor for the stock_simulation class.
@@ -90,7 +97,7 @@ class stock_simulation
 	 *  The constructor initializes the private class varibles
 	 *  based on input read from the input file. 
 	 */
-	stock_simulation( );
+	stock_simulation( result_set* _r_set );
 	
 	/*! \brief Generates price paths for underlying assets.
 	 *
