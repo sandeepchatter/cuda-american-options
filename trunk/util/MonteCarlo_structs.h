@@ -86,6 +86,9 @@ struct InputData
 	float S_0;				/*!< The price of the asset at t=0 */
 	float volatility;		/*!< The volatility of the underlying asset */
 	float strike_price;		/*!< The agreed upon strike price of the underlying asset */
+	
+	// GPU configurations
+	int num_paths_per_thread;
 };
 
 

@@ -39,42 +39,10 @@ float randFloat(float low, float high)
 // just a wrappper around the main stock simulation class.
 int main(void)
 {
-    /* NVIDIAs CPU implementation for Europeans Options
-     
-    TOptionData optionData;
-    TOptionValue callValueGPU;
-    TOptionValue callValueCPU;
-    int PATH_N = 262133;
-    optionData.S = randFloat(5.0f, 50.0f);
-    optionData.X = randFloat(10.0f, 25.0f);
-    optionData.T = randFloat(1.0f, 5.0f);
-    optionData.R = 0.06f;
-    optionData.V = 0.10f;
-    callValueGPU.Expected   = -1.0f;
-    callValueGPU.Confidence = -1.0f;
-	
-	stock_simulation sim; 
-    sim.EuropeanOptionsMonteCarloCPU(
-            callValueCPU,
-            optionData,
-            NULL,
-            PATH_N
-            );
-
-    printf("Expected: %f\n", callValueCPU.Expected);
-    printf("Confidence: %f\n", callValueCPU.Confidence);
-	
-	clock_t begin, end;
-    float CPU_t = 0;
-	begin = clock();
-	...
-	end = clock();
-    CPU_t = (float) (end - begin) / CLOCKS_PER_SEC;
-    printf("CPU time = %f\n", CPU_t);
-    */
-
-    //option_gpu.generate_and_find_exercise_boundary();
-    generate_and_find_exercise_boundary();
+    //_gpu_find_option_values_using_normrand();
+	//_gpu_find_option_values_using_curand();
+	//_gpu_find_option_values_using_normrand_v2();
+	_gpu_find_option_values_using_curand_v2();
 	
 	// Create an instance of stock_simulation class, which in this case
 	// is a put option. 
