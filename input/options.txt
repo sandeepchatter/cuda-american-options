@@ -1,8 +1,8 @@
 * number of Monte Carlo paths for the stock
-num_paths = 1048576
+num_paths = 16384
 
 * number of discrete time steps where the american
-* option can be exercised 
+* option can be exercised (let minimum be 10) 
 num_time_steps = 100
 
 * Discount rate or risk free rate of return (annualized)
@@ -28,6 +28,10 @@ strike_price = 1
 
 * number of terms in Laguerre polynomials
 num_laguerre_poly = 3
+
+* number of paths per thread (only for curand versions)
+* should be powers of 2
+num_paths_per_thread = 4;
 
 .end
 

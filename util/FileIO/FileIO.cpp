@@ -73,6 +73,10 @@ void FileIO::readInputFile(char *inputFileName, InputData &indata)
 			{
 				indata.num_laguerre_poly = atoi(str_option);
 			}
+			else if (strcmp(param, "num_paths_per_thread") == 0)
+			{
+				indata.num_paths_per_thread = atoi(str_option);
+			}
 		}
 	}
 }
