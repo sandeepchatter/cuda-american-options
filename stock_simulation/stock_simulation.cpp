@@ -18,8 +18,6 @@ stock_simulation::stock_simulation( result_set* _r_set )
 	InputData indata;
 	fileIO.readInputFile((char*)"./input/options.txt", indata);
 	
-	indata.print_details(stdout);
-	
 	start_time = get_wall_time();
 	
 	// store dividend, volatility and expiry time for the option 
@@ -282,17 +280,21 @@ void stock_simulation::find_optimal_exercise_boundary()
 	
 	#ifdef VERBOSE
 	printf("\n\nSummary for %s\n------------------------\n", (char*)r_set->desc.c_str());
-	printf("  i) American Option:\n");
+	printf("For American Option:\n");
 	printf("%40s:   %.6f \n", "Valuation at t=0", american_option_value);
 	printf("%40s:   %.6f \n", "Std dev of the samples", r_set->std_dev_am );
 	printf("%40s:   %.3g \% (w.r.t. true mean)\n", "Maximum rel error (95% confidence)", r_set->max_rel_error_am );
-	printf("\n ii) European Option:\n");
+	#endif
+
+	printf("\nFor European Option:\n");
 	printf("%40s:   %.6f \n", "Valuation at t=0 by Black-Scholes", hc[0]);
-	printf("%40s:   %.6f \n", "Valuation at t=0 by Monte-Carlo", european_option_value);
 	printf("%40s:   %.3g \% \n", "Percentage error b/w B-S and MC", 100.0*fabs( hc[0]-european_option_value)/hc[0]);
+	
+	#ifdef VERBOSE
+	printf("%40s:   %.6f \n", "Valuation at t=0 by Monte-Carlo", european_option_value);
 	printf("%40s:   %.6f \n", "Std dev of the samples", r_set->std_dev_eu );
 	printf("%40s:   %.3g \% (w.r.t. true mean)\n", "Maximum rel error (95% confidence)", r_set->max_rel_error_eu );
-	printf("\niii) Early Exercise Value: %g\n", american_option_value - european_option_value);
+	printf("\nEarly Exercise Value: %g\n", american_option_value - european_option_value);
 	#endif
 	
 	#ifdef SAVE_DATA_TO_LOG
@@ -429,7 +431,7 @@ void stock_simulation::get_resource_usage( FILE* out)
 	double num_cores = sysconf( _SC_NPROCESSORS_ONLN );
 	
 	r_set->net_clock_time = total_user_cpu_time + total_syst_cpu_time;
-	r_set->memory_usage = 0.000976562*VmHWM;
+	r_set->memory_usage = 0.000976563*usage.ru_maxrss; //convert kB to MB
 	
 	#ifdef VERBOSE
 	
@@ -490,69 +492,3 @@ double stock_simulation::get_wall_time()
     }
     return (double)time.tv_sec + (double)time.tv_usec * .000001;
 }
-
-//=================================//=================================//=================================//
-/* For European options */
-double stock_simulation::EuropeanOptionsEndCallValue(double S, double X, double r, double MuByT, double VBySqrtT)
-{
-    double callValue = S * exp(MuByT + VBySqrtT * r) - X;
-    return (callValue > 0) ? callValue : 0;
-}
-
-void stock_simulation::EuropeanOptionsMonteCarloCPU(
-        TOptionValue    &callValue,
-        TOptionData optionData,
-        float *h_Samples,
-        int pathN
-        )
-{
-    const double        S = optionData.S;
-    const double        X = optionData.X;
-    const double        T = optionData.T;
-    const double        R = optionData.R;
-    const double        V = optionData.V;
-    const double    MuByT = (R - 0.5 * V * V) * T;
-    const double VBySqrtT = V * sqrt(T);
-
-    float *samples;
-    curandGenerator_t gen;
-
-    curandCreateGeneratorHost(&gen, CURAND_RNG_PSEUDO_DEFAULT);
-    unsigned long long seed = 1234ULL;
-    curandSetPseudoRandomGeneratorSeed(gen,  seed);
-
-    if (h_Samples != NULL)
-    {
-        samples = h_Samples;
-    }
-    else
-    {
-        samples = (float *) malloc(pathN * sizeof(float));
-        curandGenerateNormal(gen, samples, pathN, 0.0, 1.0);
-    }
-
-    // for(int i=0; i<10; i++) printf("CPU sample = %f\n", samples[i]);
-
-    double sum = 0, sum2 = 0;
-
-    for (int pos = 0; pos < pathN; pos++)
-    {
-
-        double    sample = samples[pos];
-        double callValue = EuropeanOptionsEndCallValue(S, X, sample, MuByT, VBySqrtT);
-        sum  += callValue;
-        sum2 += callValue * callValue;
-    }
-
-    if (h_Samples == NULL) free(samples);
-
-    curandDestroyGenerator(gen);
-
-    //Derive average from the total sum and discount by riskfree rate
-    callValue.Expected = (float)(exp(-R * T) * sum / (double)pathN);
-    //Standart deviation
-    double stdDev = sqrt(((double)pathN * sum2 - sum * sum)/ ((double)pathN * (double)(pathN - 1)));
-    //Confidence width; in 95% of all cases theoretical value lies within these borders
-    callValue.Confidence = (float)(exp(-R * T) * 1.96 * stdDev / sqrt((double)pathN));
-}
-/* End European Options */

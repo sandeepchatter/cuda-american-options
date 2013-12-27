@@ -33,9 +33,10 @@ struct square
 /*! \brief A simple function to calculate the CDF at x.
 	 *
 	 *  A simple function to calculate the CDF of normal distribution at x.
+	 *  Using sqrt(2) = 1.414213562373
 	 */
 __device__ float phi(float x) {
-    return 0.5*(1 + erf(x/1.414213562373));
+    return 0.5*(1 + erf(x/1.4142136));
 }
 
 /*! \brief Evaluates the black-Scholes formula for given argument values.
@@ -74,7 +75,7 @@ static __global__ void generate_asset_price_paths_and_eu_cash_flow(float *S, flo
 
     float drift = indata.discount_rate - indata.dividend - 0.5*pow(indata.volatility,2);
     float del_t = indata.expiry_time/(height-1)/365;
-    float sigma = sqrt(del_t)*indata.volatility;
+    float sigma = sqrtf(del_t)*indata.volatility;
     S[tid*height] = indata.S_0;
     float temp = indata.S_0;
     
@@ -166,7 +167,7 @@ static __global__ void mp_generate_asset_price_paths_and_eu_cash_flow(float *S, 
 
     float drift = indata.discount_rate - indata.dividend - 0.5*pow(indata.volatility,2);
     float del_t = indata.expiry_time/(height-1)/365;
-    float sigma = sqrt(del_t)*indata.volatility;
+    float sigma = sqrtf(del_t)*indata.volatility;
     float S_0 = indata.S_0;
    
     float temp;
@@ -253,7 +254,7 @@ static __global__ void find_cash_flows_and_option_values(float *option_value_eu,
 	// assuming uniformaly distributed option exercise times
 	float drift = discount_rate - indata.dividend - 0.5*pow(volatility,2);
     float del_t = expiry_time/ts_am/365;
-    float sigma = sqrt(del_t)*volatility; 
+    float sigma = sqrtf(del_t)*volatility; 
 	
 	int k = 0;
 	int nt = blockDim.x;
@@ -298,15 +299,16 @@ static __global__ void find_cash_flows_and_option_values(float *option_value_eu,
 		}
 		
 		k++;
-		//if ( pathid == 0 )
-		//	cuPrintf ("----------------------\n");
+		
+		//if ( tid == 0 && bid == 0)
+		//	cuPrintf ("At t = %g, put value = %g, spot_price = %g, h = %g, cf_am = %g\n---\n",
+		//	time, put_value, spot_price, h, cf_am);
 	}
-	
+	cf_am = (cf_am == 0)?put_value:cf_am;
     option_value_eu[ pathid ] = put_value*exp(-1*discount_rate*expiry_time/365 );
 	option_value_am[ pathid ] = cf_am*exp(-1*discount_rate*oeb*del_t ); 
 	
 }
-
 /*! \brief This kernel function finds both european and american option values.
 	 *
 	 *  This kernel function finds both european and american option values for
@@ -333,7 +335,7 @@ static __global__ void find_cash_flows_and_option_values(float *option_value_eu,
 	 */
 static __global__ void mp_find_cash_flows_and_option_value(float *option_value_eu, float *option_value_am, int width, int height, InputData indata, curandState *states)
 {
-	int bid = blockIdx.x;
+	//int bid = blockIdx.x;
 	int tid = threadIdx.x;
 
 	int ts_am = height-1;
@@ -348,7 +350,7 @@ static __global__ void mp_find_cash_flows_and_option_value(float *option_value_e
 	//if ( pathid == 256  )
 	//		cuPrintf ("\nAt t=0, spot_price = %g, strike_price = %g\n", spot_price, strike_price);
 			
-	// for decicing optimal exercise boundary in american options
+	// for deciding optimal exercise boundary in american options
 	float put_value = 0;
 	float h = 0;
 	float time = 0;
@@ -357,11 +359,10 @@ static __global__ void mp_find_cash_flows_and_option_value(float *option_value_e
 	// assuming uniformaly distributed option exercise times
 	float drift = discount_rate - indata.dividend - 0.5*pow(volatility,2);
     float del_t = expiry_time/ts_am/365;
-    float sigma = sqrt(del_t)*volatility; 
+    float sigma = sqrtf(del_t)*volatility; 
 	
 	int m_limit = indata.num_paths_per_thread;
 	int nt = blockDim.x;
-	int start_index = m_limit*bid*nt*ts_am;
 	int pathid = m_limit*blockDim.x * blockIdx.x + threadIdx.x;
 	
 	curandState localState = states[tid];
@@ -375,14 +376,14 @@ static __global__ void mp_find_cash_flows_and_option_value(float *option_value_e
 		float cf_am = 0;		// cash flow of american option for this path
 		
 		spot_price = indata.S_0;
-		
+
 		#pragma unroll 10
 		for( int k = 0; k < ts_am; k++ ) 
 		{
 			spot_price = spot_price*exp(drift*del_t + sigma*curand_normal(&localState));
 		
 			//if (pathid == 100000)
-			//	cuPrintf ("pathid = %d for start_index = %d, k = %d, nt = %d, tid= %d, m = %d\n", pathid, start_index, k, nt, tid, m );
+			//	cuPrintf ("pathid = %d, k = %d, nt = %d, tid= %d, m = %d\n", pathid, k, nt, tid, m );
 		
 			put_value = fmaxf( strike_price - spot_price, 0.0); //put
 		
@@ -390,9 +391,7 @@ static __global__ void mp_find_cash_flows_and_option_value(float *option_value_e
 			int kt = k+1;
 			time = kt*del_t; 			// is the current time
 		
-			//if ( tid == 0 || tid == 255)
-			//	cuPrintf ("At t = %g, put value = %g; spot_price = %g, strike_price = %g, index = %d and normrand = %g\n",
-			//	time, put_value, spot_price, strike_price, index, norm_sample[index]);
+			
 		
 			ttm = (expiry_time - time)/365;
 			d1 = log(spot_price/strike_price) + ( discount_rate + 0.5*volatility*volatility )*ttm;
@@ -403,18 +402,27 @@ static __global__ void mp_find_cash_flows_and_option_value(float *option_value_e
 
 			h = strike_price*exp(-1*discount_rate*ttm)*phi(-1*d2) - spot_price*phi(-1*d1);
 			//===============================================================================//
-			if ( oeb > kt & put_value > h )
+			if ( oeb > kt & put_value > h ) //
 			{
 				oeb = kt;
-				cf_am = fmaxf( strike_price - spot_price, 0.0);
+				cf_am = put_value;
 			}
+			
+			/*if ( tid == 255 && bid == 0)
+				cuPrintf ("At t = %g, put value = %g, spot_price = %g, h = %g, cf_am = %g\n---\n",
+				time, put_value, spot_price, h, cf_am);*/
 		}
-		//if ( tid == 0 )
-		//	cuPrintf ("----------------------\n");
+		cf_am = (cf_am == 0)?put_value:cf_am;
+		
 		option_value_eu[ pathid ] = put_value*exp(-1*discount_rate*expiry_time/365 );
 		option_value_am[ pathid ] = cf_am*exp(-1*discount_rate*oeb*del_t ); 
-		
-		start_index = start_index + nt*ts_am;
+
+		/*if ( tid == 255 && bid == 0)
+		{	
+			cuPrintf (" put_value: %g and cf_am = %g\n", put_value, cf_am);
+			cuPrintf (" option_value_eu[%d] = %g, option_value_am[%d] = %g\n---\n", pathid, option_value_eu[ pathid ], pathid, option_value_am[ pathid ]);
+		}*/
+	
 		pathid = pathid + nt;
 	}
 }
