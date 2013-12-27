@@ -137,21 +137,6 @@ class stock_simulation
 	void get_resource_usage( FILE* out);
 	void line2arr (char* str, vector<string>* arr, char *tokenizer);
 	double get_wall_time();
-	//=================================
-	/* For European options */
-	double EuropeanOptionsEndCallValue(
-		double S,
-		double X,
-		double r,
-		double MuByT,
-		double VBySqrtT);
-
-	void EuropeanOptionsMonteCarloCPU(
-        TOptionValue    &callValue,
-        TOptionData optionData,
-        float *h_Samples,
-        int pathN );
-	/* End European Options */
 };
 
 //	END
